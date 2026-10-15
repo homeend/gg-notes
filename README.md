@@ -1,7 +1,21 @@
 # GgNotes
 
-IntelliJ-platform plugin that surfaces [gigagit](https://gigagit.code-drill.eu/)
-`gg note` review notes inside the IDE. Early scaffold.
+IntelliJ-platform plugin that shows the **overviews** the
+[gigagit](https://gigagit.code-drill.eu/) CLI (`gg`) stores for a repository:
+an AI agent's markdown document whose links are anchors into the code at one
+commit, plus remarks on exact lines. Read from gg's own store on disk
+(`docs/gg-notes-store/SPEC.md`), with no gg running. Read-only.
+
+- **GgNotes tool window** (right stripe): the overviews of the open
+  repository grouped by commit, HEAD's first, then newest; rows read
+  `title · author · date · short sha · branch | PR #n`.
+- **Document**: selecting a row renders it; anchors are links numbered in
+  document order; Previous/Next anchor on the toolbar.
+- **Anchor**: opens the file *at the overview's commit* (the working file
+  only when identical), scrolled to the line with the range selected; the
+  banner above the editor goes back to the overview (also `Alt+Shift+O`).
+- **Remarks**: boxes above their lines, a tint over them, gutter bands on
+  every anchor of the file — only while that overview is open.
 
 ## Build
 
@@ -14,9 +28,15 @@ IntelliJ-platform plugin that surfaces [gigagit](https://gigagit.code-drill.eu/)
 Needs a JDK 17–23 (`JAVA_HOME`, or the sdkman fallback in the scripts).
 Install the zip via Settings ▸ Plugins ▸ gear ▸ *Install Plugin from Disk…*.
 
+To try it on a checkout: `./gradlew runIde --args=/path/to/checkout`
+(`-Pggnotes.stateHome=<dir>` reads a throwaway store under `<dir>/gg/notes/`).
+
 ## Layout
 
-- `src/main/kotlin/dev/ggnotes` — plugin sources (`GgNotesBundle`, `GgNotesIcons`, startup activity)
+- `src/main/kotlin/dev/ggnotes/store` — pure Kotlin: store locator and reader, link classifier, markdown renderer, grouping (unit-tested against `examples/`)
+- `src/main/kotlin/dev/ggnotes/overview` — service, tool window, document pane, anchor navigation, remark overlays, editor banner
+- `src/main/kotlin/dev/ggnotes/git` — git4idea access (common dir, subject, file at commit)
+- `THIRD_PARTY_NOTICES.md` — bundled libraries and licences
 - `src/main/resources/META-INF/plugin.xml` — descriptor
 - `src/main/resources/messages/GgNotesBundle.properties` — all user-visible strings
 - `src/test/kotlin` — JUnit 4 tests
