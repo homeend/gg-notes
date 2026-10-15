@@ -160,7 +160,19 @@ Test data, all in `docs/gg-notes-store/` (copies in `examples/`):
 Not in the store (SPEC-part2 §7): GitHub comments — a PR comment view needs
 `gh` itself; only local draft replies to forge threads are stored.
 
-## 6. Workflow reminders
+## 6. Live steering — be a `gg session` target
+
+`docs/gg-steer/SPEC.md` is the protocol (a copy of gigagit's spec);
+`docs/gg-steer/PLUGIN.md` is what the plugin implements, in build order:
+presence (`ide.json`, touched every 1 s), the `ide/` sub-inbox drain, the
+verb handler with gg's exact reply prose, and the session memory (open
+files `f<n>`, temporary notes `t<n>` with gg's exact-line re-anchoring,
+in-memory overviews). The IDE is reached only on `--to ide` (or
+`GG_SESSION_TO=ide`); gg's side of that lives on gigagit's `feat/steer-ide`
+branch and is independent of the plugin — develop against hand-written
+command files (PLUGIN.md §7) until that binary exists.
+
+## 7. Workflow reminders
 
 - Feature branches + worktrees as `CLAUDE.md` says; per-task commits; the
   suite green before merging.
