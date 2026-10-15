@@ -141,7 +141,14 @@ class SteerService(private val project: Project) : Disposable {
 
     fun allSessions(): Collection<RootSession> = sessions.values
 
+    /** Every second: keep presence fresh, and publish it for roots git4idea detected after project open. */
     private fun touchAll() {
+        if (project.isDisposed) return
+        runCatching {
+            for (repo in GitRepositoryManager.getInstance(project).repositories) {
+                if (!sessions.containsKey(repo.root.path)) register(repo)?.let { watcher?.add(it.ideDir) }
+            }
+        }.onFailure { LOG.warn("GgNotes steer: registering roots", it) }
         for (s in sessions.values) runCatching { Presence.touch(s.inbox, s.presenceJson) }
     }
 

@@ -83,6 +83,16 @@ class SessionOverviewsTest {
     }
 
     @Test
+    fun `showing an overview again keeps one entry and makes it the most recently shown`() {
+        val m = SessionMemory("/w")
+        val o = (m.addOverview("Tour", "text", resolver) as OverviewResult.Ok).overview
+        m.touchFile("worktree", "a.go", null)
+        m.markShown(o.id)
+        assertEquals(listOf(o.id, "f2"), m.openFiles().map { it.id })
+        assertEquals(1, m.openFiles().count { it.source == "overview" })
+    }
+
+    @Test
     fun `only the first 100 anchors count`() {
         val m = SessionMemory("/w")
         val text = (1..102).joinToString(" ") { "[l$it](f$it.go:$it)" }

@@ -20,7 +20,6 @@ class InboxWatcher(private val dirs: List<Path>, private val onWake: () -> Unit)
     @Volatile private var thread: Thread? = null
 
     fun start() {
-        if (dirs.isEmpty()) return
         try {
             val ws = FileSystems.getDefault().newWatchService()
             for (d in dirs) runCatching { d.register(ws, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_MODIFY) }
@@ -29,6 +28,12 @@ class InboxWatcher(private val dirs: List<Path>, private val onWake: () -> Unit)
         } catch (e: Exception) {
             LOG.info("GgNotes steer: no directory watcher (${e.message}); polling only")
         }
+    }
+
+    /** Watch one more sub-inbox (a root detected after start). */
+    fun add(dir: Path) {
+        val ws = service ?: return
+        runCatching { dir.register(ws, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_MODIFY) }
     }
 
     private fun loop(ws: WatchService) {

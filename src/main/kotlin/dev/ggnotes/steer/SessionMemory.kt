@@ -120,6 +120,12 @@ class SessionMemory(val root: String) {
 
     fun findFile(id: String): OpenFile? = synchronized(lock) { files.values.firstOrNull { it.id == id } }
 
+    /** An existing entry was brought to the front (an overview shown again, a file focused). */
+    fun markShown(id: String) = synchronized(lock) {
+        files.values.firstOrNull { it.id == id }?.let { it.lastShown = ++clock }
+        Unit
+    }
+
     fun findFileByPath(path: String): OpenFile? = synchronized(lock) {
         files.values.filter { it.path == path }.maxByOrNull { it.lastShown }
     }

@@ -392,7 +392,7 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             if (keepAnchor) service.openKeepingAnchor(overview, s.repo) else service.open(overview, s.repo)
             com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(OverviewService.TOOL_WINDOW_ID)?.show()
         }
-        s.memory.touchFile("overview", "overview-${o.id.substring(1)}.md", null, title = o.title)
+        s.memory.markShown(o.id)
     }
 
     private fun overviewAdd(s: SteerService.RootSession, c: Command): Reply {
