@@ -26,7 +26,8 @@ data class RenderedDocument(val html: String, val anchors: List<RenderedAnchor>)
 
 /**
  * SPEC §6–§7: GFM markdown → HTML with gg's link rules. Anchors become
- * `<a href="anchor:N">` (preceded by `<a name="aN">` for scrolling); a
+ * `<a href="anchor:N">label<sup>N</sup></a>` — numbered in document order
+ * as gg draws them — preceded by `<a name="aN">` for scrolling; a
  * missing anchor is a `<span class="missing">`; the current one carries
  * `class="current"`. Every newline inside a paragraph is a hard break and
  * raw HTML is literal text.
@@ -177,12 +178,12 @@ object MarkdownRenderer {
                         if (n in missing) {
                             visitor.consumeHtml("<span class=\"missing\">")
                             label()
-                            visitor.consumeHtml("</span>")
+                            visitor.consumeHtml("<sup>$n</sup></span>")
                         } else {
                             val cls = if (n == current) " class=\"current\"" else ""
                             visitor.consumeHtml("<a href=\"anchor:$n\"$cls>")
                             label()
-                            visitor.consumeHtml("</a>")
+                            visitor.consumeHtml("<sup>$n</sup></a>")
                         }
                     }
                 }

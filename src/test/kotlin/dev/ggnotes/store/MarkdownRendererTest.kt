@@ -33,6 +33,15 @@ class MarkdownRendererTest {
     }
 
     @Test
+    fun `anchors show their number after the label like gg does`() {
+        val r = render("[a](x.go:1) [b](y.go:2)")
+        assertTrue(r.html, r.html.contains("""<a href="anchor:1">a<sup>1</sup></a>"""))
+        assertTrue(r.html, r.html.contains("""<a href="anchor:2">b<sup>2</sup></a>"""))
+        val missing = MarkdownRenderer.render("[a](x.go:1)", missingAnchors = setOf(1))
+        assertTrue(missing.html, missing.html.contains("""<span class="missing">a<sup>1</sup></span>"""))
+    }
+
+    @Test
     fun `http links stay links and non-anchors become label with dest`() {
         val r = render("[x](https://example.com/p) [y](a.go:9-3) [z](ftp://h/p)")
         assertTrue(r.html, r.html.contains("""<a href="https://example.com/p">x</a>"""))

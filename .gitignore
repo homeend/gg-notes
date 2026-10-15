@@ -5,3 +5,5 @@ build/
 *.iml
 /dist-release/
 /dist/
+# feature worktrees (CLAUDE.md: /work is root-owned, so they live inside the checkout)
+.claude/worktrees/
