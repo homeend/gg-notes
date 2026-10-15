@@ -50,13 +50,16 @@ class SteerService(private val project: Project) : Disposable {
         val files = ConcurrentHashMap<String, VirtualFile>()
         /** Live `highlight` markers; cleared by `highlight_clear` or when their file closes. */
         val highlights = java.util.concurrent.CopyOnWriteArrayList<com.intellij.openapi.editor.markup.RangeHighlighter>()
+        /** The boxes and listeners of the temporary notes; set by the service. */
+        lateinit var notes: TempNotes
 
-        /** A file the user closed leaves the list with its highlights (PLUGIN.md §5). */
+        /** A file the user closed leaves the list with its highlights and notes (PLUGIN.md §5). */
         fun fileClosed(vf: VirtualFile) {
             for ((id, f) in files.entries.toList()) {
                 if (f == vf) {
                     files.remove(id)
                     memory.removeFile(id)
+                    notes.fileClosed(id)
                 }
             }
             highlights.removeIf { h ->
@@ -128,6 +131,7 @@ class SteerService(private val project: Project) : Disposable {
         )
         Presence.write(inbox, json)
         val session = RootSession(repo, top, inbox, json, SessionMemory(top))
+        session.notes = TempNotes(project, session, this)
         sessions[repo.root.path] = session
         LOG.info("GgNotes steer: presence for ${repo.root.name} at $inbox")
         return session

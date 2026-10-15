@@ -2,6 +2,7 @@ package dev.ggnotes.overview
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vcs.VcsDirectoryMapping
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -65,6 +66,10 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
 
     override fun tearDown() {
         try {
+            // git4idea's index file system is disposed before the framework closes editors, and an
+            // editor on a GitIndexVirtualFile then trips an assertion: close everything first
+            val fem = FileEditorManager.getInstance(project)
+            ApplicationManager.getApplication().invokeAndWait { fem.openFiles.forEach { fem.closeFile(it) } }
             OverviewService.getInstance(project).close()
             com.intellij.openapi.util.Disposer.dispose(dev.ggnotes.steer.SteerService.getInstance(project))
         } finally {
@@ -133,7 +138,8 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         val staged = post("2-2", """{"id":"2-2","cmd":"navigate","file":"internal/x/gate.go","target":{"state":"staged"},"line":{"side":"new","no":99},"wait":true}""")
         assertEquals(staged.toString(), "opened internal/x/gate.go:99 at line 6 (line 99 is past the end, 6 lines)", staged.get("detail")?.asString)
         assertTrue(FileEditorManager.getInstance(project).selectedTextEditor!!.document.text.contains("edited after the commit"))
-        assertFalse(FileEditorManager.getInstance(project).selectedFiles.single().isWritable)
+        assertTrue("the index copy opens in viewer mode", (FileEditorManager.getInstance(project).selectedTextEditor as com.intellij.openapi.editor.ex.EditorEx).isViewer)
+        assertTrue(FileEditorManager.getInstance(project).selectedFiles.single() is git4idea.index.vfs.GitIndexVirtualFile)
 
         val missing = post("2-3", """{"id":"2-3","cmd":"navigate","file":"nope.go","wait":true}""")
         assertEquals("nope.go is not in the working tree", missing.get("error").asString)
@@ -171,6 +177,53 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         ApplicationManager.getApplication().invokeAndWait { FileEditorManager.getInstance(project).closeFile(revisionFile) }
         val after = post("2-13", """{"id":"2-13","cmd":"files","wait":true}""").getAsJsonArray("files").map { it.asJsonObject.get("id").asString }
         assertFalse(after.contains(commitEntry.get("id").asString))
+
+        // step 3: temporary notes on the editor's current text, drawn as boxes, re-anchored on edits
+        val added = post("3-1", """{"id":"3-1","cmd":"note_add","file":"internal/x/gate.go","start":4,"end":4,"summary":"Returns the flag.","rationale":"Why.","author":"ada","wait":true}""")
+        assertEquals(added.toString(), "noted internal/x/gate.go:4 as t1", added.get("detail")?.asString)
+        val noteWire = added.getAsJsonArray("notes")[0].asJsonObject
+        assertEquals("t1", noteWire.get("id").asString)
+        assertEquals("f1", noteWire.get("file_id").asString)
+        assertEquals("ada", noteWire.get("author").asString)
+        assertEquals("a line number is 1-based", post("3-2", """{"id":"3-2","cmd":"note_add","file":"internal/x/gate.go","start":0,"end":0,"summary":"x","wait":true}""").get("error").asString)
+        assertEquals("a note needs a summary", post("3-3", """{"id":"3-3","cmd":"note_add","file":"internal/x/gate.go","start":1,"end":1,"summary":" ","wait":true}""").get("error").asString)
+        val shown = post("3-4", """{"id":"3-4","cmd":"note_show","note_id":"t1","wait":true}""").getAsJsonArray("notes")[0].asJsonObject
+        assertEquals(listOf("\treturn open"), shown.getAsJsonArray("text").map { it.asString })
+        ApplicationManager.getApplication().invokeAndWait {
+            FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, LocalFileSystem.getInstance().refreshAndFindFileByIoFile(File(repoDir, "internal/x/gate.go"))!!, 0, 0), true)
+        }
+        val gateEditor = FileEditorManager.getInstance(project).selectedTextEditor!!
+        waitFor("one note box drawn") { gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).size == 1 }
+        assertEquals(1, post("3-5", """{"id":"3-5","cmd":"files","wait":true}""").getAsJsonArray("files").map { it.asJsonObject }.single { it.get("id").asString == "f1" }.get("notes").asInt)
+
+        // the user inserts two lines at the top: the note follows its text to line 6 and the box moves
+        ApplicationManager.getApplication().invokeAndWait {
+            com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) { gateEditor.document.insertString(0, "// one\n// two\n") }
+        }
+        waitFor("note re-anchored") { session.memory.findNote("t1")?.start == 6 }
+        val listed = post("3-6", """{"id":"3-6","cmd":"note_list","file":"internal/x/gate.go","wait":true}""").getAsJsonArray("notes")[0].asJsonObject
+        assertEquals(6, listed.get("start").asInt)
+        assertFalse(listed.has("outdated"))
+        waitFor("box redrawn at line 6") { gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).singleOrNull()?.let { gateEditor.document.getLineNumber(it.offset) } == 5 }
+
+        // the noted line is edited: the note is outdated and says so
+        ApplicationManager.getApplication().invokeAndWait {
+            com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+                val l = gateEditor.document.getLineStartOffset(5)
+                gateEditor.document.replaceString(l, gateEditor.document.getLineEndOffset(5), "\treturn !open")
+            }
+        }
+        waitFor("note outdated") { session.memory.findNote("t1")?.outdated == true }
+        assertTrue(post("3-7", """{"id":"3-7","cmd":"note_show","note_id":"t1","wait":true}""").getAsJsonArray("notes")[0].asJsonObject.get("outdated").asBoolean)
+
+        // stepping and removal
+        ApplicationManager.getApplication().invokeAndWait { gateEditor.caretModel.moveToOffset(0) }
+        assertEquals("opened internal/x/gate.go:6 at line 6", post("3-8", """{"id":"3-8","cmd":"navigate","step":"next_note","wait":true}""").get("detail").asString)
+        assertEquals("no next note in this diff", post("3-9", """{"id":"3-9","cmd":"navigate","step":"next_note","wait":true}""").get("error").asString)
+        assertEquals("removed t1", post("3-10", """{"id":"3-10","cmd":"note_rm","note_id":"t1","wait":true}""").get("detail").asString)
+        assertEquals("no note t1", post("3-11", """{"id":"3-11","cmd":"note_rm","note_id":"t1","wait":true}""").get("error").asString)
+        assertEquals("no notes", post("3-12", """{"id":"3-12","cmd":"note_list","wait":true}""").get("detail").asString)
+        waitFor("box removed") { gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).isEmpty() }
     }
 
     fun testOverviewIsListedOpenedAndItsAnchorOpensTheCommittedFile() {

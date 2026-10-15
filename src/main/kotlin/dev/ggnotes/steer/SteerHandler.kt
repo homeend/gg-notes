@@ -41,6 +41,10 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             "highlight_clear" -> highlightClear(s, c)
             "files" -> files(s, c)
             "file_focus" -> fileFocus(s, c)
+            "note_add" -> noteAdd(s, c)
+            "note_list" -> noteList(s, c)
+            "note_show" -> noteShow(s, c)
+            "note_rm" -> noteRm(s, c)
             "focus", "reload", "serve" -> Reply.fail(c.id, "${c.cmd} is a gg TUI command")
             else -> Reply.fail(c.id, "unknown command ${c.cmd}")
         }
@@ -55,7 +59,7 @@ class SteerHandler(private val project: Project, private val service: SteerServi
         val file = c.file?.takeIf { it.isNotEmpty() }
         if (file == null) {
             c.commit?.takeIf { it.isNotEmpty() }?.let { return showCommit(s, c, it) }
-            if (!c.step.isNullOrEmpty()) return Reply.fail(c.id, if (c.step == "prev_note") "no previous note in this diff" else "no next note in this diff")
+            if (!c.step.isNullOrEmpty()) return stepNote(s, c)
             return Reply.fail(c.id, "navigate needs a file, a commit or a step")
         }
         val resolved = resolveFile(s, c, file) ?: return Reply.fail(c.id, missingFile(c, file))
@@ -76,6 +80,8 @@ class SteerHandler(private val project: Project, private val service: SteerServi
                 return@onEdt
             }
             val editor = fem.openTextEditor(OpenFileDescriptor(project, resolved.vf, (no - 1).coerceAtLeast(0), 0), true)
+            // the index's copy is shown read-only here (SPEC §3.3), without touching the IDE's own staging file
+            if (resolved.rev == "staged") (editor as? com.intellij.openapi.editor.ex.EditorEx)?.isViewer = true
             val lineCount = editor?.let { Lines.split(it.document.charsSequence).size } ?: 0
             if (editor != null && no > 0) placeCaret(editor, no, end, lineCount)
             detail = Lines.landed("opened $file" + spanSuffix(no, end), no, lineCount)
@@ -94,8 +100,9 @@ class SteerHandler(private val project: Project, private val service: SteerServi
                 Resolved(RevisionFiles.atCommit(project, s.repo.root, sha, file), "commit", sha)
             }
             "staged" -> {
-                val bytes = GitAccess.indexContent(project, s.repo.root, file) ?: return null
-                Resolved(RevisionFiles.staged(bytes, file), "worktree", "staged")
+                GitAccess.indexContent(project, s.repo.root, file) ?: return null
+                val vf = RevisionFiles.staged(project, s.repo.root, file) ?: return null
+                Resolved(vf, "worktree", "staged")
             }
             else -> workingFile(s, file)?.let { Resolved(it, "worktree", null) }
         }
@@ -233,7 +240,7 @@ class SteerHandler(private val project: Project, private val service: SteerServi
                     val editor = if (vf != null && vf == selected) fem.selectedTextEditor else null
                     editor?.caretModel?.logicalPosition?.line?.plus(1) ?: 0
                 },
-                noteCount = { 0 })
+                noteCount = { entry -> s.memory.noteCount(entry.id) })
         }
     }
 
@@ -251,6 +258,87 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             detail = if (entry.source == "overview") "focused ${entry.title ?: entry.path}" else "focused ${entry.path}" + (if (no > 0) " at line $no" else "")
         }
         return Reply.ok(c.id, detail)
+    }
+
+    // ---- temporary notes ----------------------------------------------------------------
+
+    /** PLUGIN.md §5: resolve the file as navigate would, open it in the background, note the editor's CURRENT lines. */
+    private fun noteAdd(s: SteerService.RootSession, c: Command): Reply {
+        val file = c.file?.takeIf { it.isNotEmpty() } ?: return Reply.fail(c.id, "note_add needs a file")
+        val state = c.target?.state.orEmpty()
+        if (state == "preview" || state == "ref" || state == "pair") return Reply.fail(c.id, "the IDE cannot show a $state target")
+        if (c.side == "old") return Reply.fail(c.id, "the IDE shows no old side")
+        val resolved = resolveFile(s, c, file) ?: return Reply.fail(c.id, missingFile(c, file))
+        val entry = s.memory.touchFile(resolved.source, file, resolved.rev, background = true)
+        s.files[entry.id] = resolved.vf
+        var result: NoteResult? = null
+        onEdt {
+            val fem = FileEditorManager.getInstance(project)
+            if (!fem.isFileOpen(resolved.vf)) fem.openFile(resolved.vf, false)
+            val document = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(resolved.vf)
+            val lines = document?.let { s.notes.currentLines(it) } ?: emptyList()
+            result = s.memory.addNote(entry.id, lines, c.start, if (c.end >= c.start) c.end else c.start, c.summary, c.rationale, c.author, c.meta, c.display)
+            if (result is NoteResult.Ok) s.notes.noteAdded(entry.id, resolved.vf)
+        }
+        return when (val r = result) {
+            is NoteResult.Ok -> Reply.ok(c.id, s.memory.notedDetail(r.note)).copy(notes = listOf(s.memory.noteWire(r.note, withText = false)))
+            is NoteResult.Refused -> Reply.fail(c.id, r.error)
+            null -> Reply.fail(c.id, "no editor for $file")
+        }
+    }
+
+    private fun noteList(s: SteerService.RootSession, c: Command): Reply {
+        val scope: SessionMemory.OpenFile? = when {
+            !c.fileId.isNullOrEmpty() -> s.memory.findFile(c.fileId) ?: return Reply.fail(c.id, "no open file ${c.fileId}")
+            !c.file.isNullOrEmpty() -> s.memory.findFileByPath(c.file) ?: return Reply.fail(c.id, "no open file ${c.file}")
+            else -> null
+        }
+        for (f in listOfNotNull(scope).ifEmpty { s.memory.openFiles() }) s.notes.alignNow(f.id)
+        val notes = (if (scope != null) s.memory.notesOf(scope.id) else s.memory.allNotes()).map { s.memory.noteWire(it, withText = false) }
+        return Reply.ok(c.id, if (notes.isEmpty()) "no notes" else "").copy(notes = notes)
+    }
+
+    private fun noteShow(s: SteerService.RootSession, c: Command): Reply {
+        val id = c.noteId.orEmpty()
+        val n = s.memory.findNote(id) ?: return Reply.fail(c.id, "no note $id")
+        s.notes.alignNow(n.fileId)
+        return Reply.ok(c.id, "").copy(notes = listOf(s.memory.noteWire(s.memory.findNote(id) ?: n, withText = true)))
+    }
+
+    private fun noteRm(s: SteerService.RootSession, c: Command): Reply {
+        val id = c.noteId.orEmpty()
+        val n = s.memory.findNote(id) ?: return Reply.fail(c.id, "no note $id")
+        s.memory.removeNote(id)
+        onEdt { s.notes.redraw(n.fileId) }
+        return Reply.ok(c.id, "removed $id")
+    }
+
+    /** `navigate --step next_note|prev_note`: from the file in front, the next/previous temporary note by line. */
+    private fun stepNote(s: SteerService.RootSession, c: Command): Reply {
+        val forward = c.step != "prev_note"
+        val none = if (forward) "no next note in this diff" else "no previous note in this diff"
+        var reply: Reply? = null
+        onEdt {
+            val fem = FileEditorManager.getInstance(project)
+            val vf = fem.selectedFiles.firstOrNull()
+            val editor = fem.selectedTextEditor
+            val entry = s.memory.openFiles().firstOrNull { s.files[it.id] == vf }
+            if (vf == null || editor == null || entry == null) {
+                reply = Reply.fail(c.id, none)
+                return@onEdt
+            }
+            s.notes.alignNow(entry.id)
+            val caret = editor.caretModel.logicalPosition.line + 1
+            val notes = s.memory.notesOf(entry.id)
+            val target = if (forward) notes.filter { it.start > caret }.minByOrNull { it.start } else notes.filter { it.start < caret }.maxByOrNull { it.start }
+            if (target == null) {
+                reply = Reply.fail(c.id, none)
+                return@onEdt
+            }
+            placeCaret(editor, target.start, target.end, Lines.split(editor.document.charsSequence).size)
+            reply = Reply.ok(c.id, "opened ${entry.path}:${target.start} at line ${target.start}")
+        }
+        return reply ?: Reply.fail(c.id, none)
     }
 
     // ---- helpers -------------------------------------------------------------------------
