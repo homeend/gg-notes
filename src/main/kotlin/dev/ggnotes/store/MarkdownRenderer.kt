@@ -36,6 +36,20 @@ object MarkdownRenderer {
 
     const val MAX_ANCHORS = 100
 
+    private val INLINE_LINK = Regex("""!?\[((?:[^\[\]\\]|\\.)*)\]\(([^)\s]+)(\s+"[^"]*")?\)""")
+
+    /**
+     * SPEC-part2 §3.2: a review's summary (and a prose review) has NO anchors.
+     * Every inline link whose destination would be an anchor becomes
+     * `label (dest)` text before rendering; http(s) links stay links.
+     */
+    fun neutralizeAnchors(markdown: String): String = INLINE_LINK.replace(markdown) { m ->
+        when (LinkClassifier.classify(m.groupValues[2])) {
+            is LinkTarget.Anchor -> m.groupValues[1] + " (" + m.groupValues[2] + ")"
+            else -> m.value
+        }
+    }
+
     fun render(markdown: String, currentAnchor: Int? = null, missingAnchors: Set<Int> = emptySet()): RenderedDocument {
         val flavour = GFMFlavourDescriptor()
         val tree = MarkdownParser(flavour).buildMarkdownTreeFromString(markdown)
