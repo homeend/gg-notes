@@ -5,15 +5,27 @@
     <name>GgNotes</name>
     <vendor email="homeend@wp.pl">gg-notes</vendor>
     <description><![CDATA[
-        <p>GgNotes brings <code>gg note</code> review notes from the
-        <a href="https://gigagit.code-drill.eu/">gigagit</a> CLI into the IDE.</p>
-        <p>Early scaffold — no user-visible features yet.</p>
+        <p>GgNotes shows the <b>overviews</b> that the
+        <a href="https://gigagit.code-drill.eu/">gigagit</a> CLI (<code>gg</code>) stores for a
+        repository: an AI agent's markdown document whose links are anchors into the code at one
+        commit, plus remarks on exact lines. The same overview the user sees in gg, read from the
+        same files on disk, with no gg running.</p>
+        <ul>
+            <li>The <b>GgNotes</b> tool window lists the overviews of the open repository, grouped by
+                commit (HEAD's first, then newest).</li>
+            <li>Selecting one renders its document; anchors are links numbered in document order,
+                with next/previous-anchor actions.</li>
+            <li>An anchor opens the file <i>at the overview's commit</i>, scrolled to the line with
+                the range selected; the banner above the editor goes back to the overview.</li>
+            <li>The overview's remarks appear as boxes above their lines while it is open.</li>
+        </ul>
+        <p>Read-only: the plugin never writes gg's store.</p>
     ]]></description>
 
     <change-notes><![CDATA[
         <h3>0.1.0</h3>
         <ul>
-            <li>Project scaffold.</li>
+            <li>First version: the overview viewer (tool window, document, anchors, remarks).</li>
         </ul>
     ]]></change-notes>
 
@@ -25,11 +37,33 @@
     <extensions defaultExtensionNs="com.intellij">
         <notificationGroup id="GgNotes" displayType="BALLOON"/>
         <postStartupActivity implementation="dev.ggnotes.startup.GgNotesStartupActivity"/>
+        <!-- The id is user-visible (stripe title) and frozen like the plugin name. -->
+        <toolWindow id="GgNotes"
+                    anchor="right"
+                    doNotActivateOnStart="true"
+                    icon="dev.ggnotes.GgNotesIcons.ToolWindow"
+                    factoryClass="dev.ggnotes.overview.OverviewToolWindowFactory"/>
+        <editorNotificationProvider implementation="dev.ggnotes.overview.OverviewBanner"/>
     </extensions>
 
     <actions>
         <!-- Texts and descriptions come from messages/GgNotesBundle.properties
              via the convention keys action.<id>.text / action.<id>.description /
              group.<id>.text. -->
+        <action id="GgNotes.Refresh" class="dev.ggnotes.overview.RefreshOverviewsAction"/>
+        <action id="GgNotes.PreviousAnchor" class="dev.ggnotes.overview.PreviousAnchorAction"/>
+        <action id="GgNotes.NextAnchor" class="dev.ggnotes.overview.NextAnchorAction"/>
+        <action id="GgNotes.BackToOverview" class="dev.ggnotes.overview.BackToOverviewAction">
+            <keyboard-shortcut keymap="$default" first-keystroke="alt shift O"/>
+        </action>
+        <action id="GgNotes.Close" class="dev.ggnotes.overview.CloseOverviewAction"/>
+        <group id="GgNotes.Toolbar">
+            <reference ref="GgNotes.Refresh"/>
+            <separator/>
+            <reference ref="GgNotes.PreviousAnchor"/>
+            <reference ref="GgNotes.NextAnchor"/>
+            <separator/>
+            <reference ref="GgNotes.Close"/>
+        </group>
     </actions>
 </idea-plugin>
