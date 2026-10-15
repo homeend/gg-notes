@@ -132,7 +132,35 @@ disk — confirm it with this oracle on Windows before trusting it there.
 - **Remarks**: inlay/gutter hints on `newRange` showing `summary`,
   `rationale` on hover, shown only while that overview is open.
 
-## 5. Workflow reminders
+## 5. Part 2 — reviews, line notes, live notes, meta
+
+`docs/gg-notes-store/SPEC-part2.md` adds the next record kinds on the same
+envelope; its §1.1 table classifies every record, its §8 table says what
+the plugin shows for each. Build in this order: (1) reviews on commits and
+PRs — new-side remarks placed, old-side remarks listed; (2) committed line
+notes + replies + `[[resolved]]`; (3) live notes in `worktrees/<wkey>.toml`
+with the relocation rule of §5.2; (4) meta/display badges.
+
+Test data, all in `docs/gg-notes-store/` (copies in `examples/`):
+
+- `fixture/` — every record kind, written by gg's own store; `fixture/README.md`
+  lists each record by id and the lines the `context_hash` values fingerprint.
+  Reading `commits.toml` + `previews.toml` + `worktrees/cc36f09eabab0c81.toml`
+  with the §1.1 predicates must yield: 2 overviews, 2 committed reviews
+  (`c0ffee01`, `c0ffee02`), 1 working review (`bb220002`), 1 committed line
+  note (`aa110001`) with 1 reply, 1 live line note (`bb220001`), 1 remark
+  reply (`c0ffee03` on `review:c0ffee02:0`), 1 resolution.
+- `review-document.schema.json` / `.lenient.` — validate review documents
+  leniently; the strict one is gg's drift guard.
+- `vectors.json` — `context_hash`, `remark_fp`, repository and worktree keys:
+  port the formulas and assert these strings.
+- `relocation-cases.json` — run each case against your relocation port;
+  `status` and `at` must match (the "lower wins" tie-break is case 6).
+
+Not in the store (SPEC-part2 §7): GitHub comments — a PR comment view needs
+`gh` itself; only local draft replies to forge threads are stored.
+
+## 6. Workflow reminders
 
 - Feature branches + worktrees as `CLAUDE.md` says; per-task commits; the
   suite green before merging.

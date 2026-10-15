@@ -95,3 +95,12 @@ these lines.
 | the 101st anchor and later | the label alone, as text |
 | a newline inside a paragraph | a hard line break |
 | `<b>raw html</b>` | literal text |
+
+## Part 2 records (reviews, line notes, live notes)
+
+`commits.toml`, `previews.toml` and `worktrees/cc36f09eabab0c81.toml` are
+the gg-written fixture of SPEC-part2 — the records of every kind are listed
+by id in `../docs/gg-notes-store/fixture/README.md`, with the lines the
+`context_hash` values fingerprint. `../docs/gg-notes-store/vectors.json`
+and `relocation-cases.json` are the unit-test inputs for the fingerprints
+and the relocation rule.
