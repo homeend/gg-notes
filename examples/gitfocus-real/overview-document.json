@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "title": "GitFocus tab: branch-first rows",
+  "overview": "This merge changes each worktree row in the GitFocus tab: the row starts with the branch, the directory name is in a right column, and the full path is in the tooltip.\n\n## 1. Row text\n\n- [`rowText`](src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt:20-28) makes the text of a row. It does not use the directory name now. Before this change, the text was `name [branch]`.\n- [This line](src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt:21) gives the branch. When the branch is null or blank, it gives the `(detached)` text.\n- [The `(main)` marker](src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt:22) and [the status suffix](src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt:23-27) come after the branch, as before.\n\n## 2. Right column\n\n- [The renderer](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:412) puts the directory name in the right label. Before, this label showed the full path.\n- [The right label](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:390) has right alignment. [The panel](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:398) puts it in the CENTER area. Thus, the name moves to the right edge when you make the tool window wider.\n- A window that has no worktree shows [no text](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:419) in the right column now.\n\n## 3. Tooltip\n\n- [`getToolTipText`](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:105-107) shows the full path above the double-click hint. On the X, the tooltip is \"Close this window\", as before.\n- [`pathAt`](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:268-273) finds the row below the mouse pointer. [This check](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:271) stops a tooltip below the last row.\n- [`rowTooltip`](src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt:34-37) makes the HTML text. It escapes the path and the hint. Thus, a `<` or a `&` in a path shows correctly.\n\n## 4. Speed search\n\n- [Speed search](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:131) adds the directory name and the full path to the row text. Thus, you can still find a row by its directory name.\n\n## 5. Text resources\n\n- The new key `worktrees.row.detached` is in [English](src/main/resources/messages/GitFocusBundle.properties:217), [Japanese](src/main/resources/messages/GitFocusBundle_ja.properties:208), [Korean](src/main/resources/messages/GitFocusBundle_ko.properties:208), [Polish](src/main/resources/messages/GitFocusBundle_pl.properties:210), [Russian](src/main/resources/messages/GitFocusBundle_ru.properties:208) and [Chinese](src/main/resources/messages/GitFocusBundle_zh_CN.properties:208).\n- [This helper](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:348) reads the key for the renderer and for speed search.\n\n## 6. Tests and manual checks\n\n- [The row text test](src/test/kotlin/dev/gitfocus/worktrees/WorktreesListTest.kt:96-99) makes sure that the text is the branch only.\n- [The detached test](src/test/kotlin/dev/gitfocus/worktrees/WorktreesListTest.kt:101-104) makes sure that a null branch and a blank branch both show `(detached)`.\n- [The main checkout test](src/test/kotlin/dev/gitfocus/worktrees/WorktreesListTest.kt:106-110) makes sure of the order: branch, `(main)`, status.\n- [The tooltip test](src/test/kotlin/dev/gitfocus/worktrees/WorktreesListTest.kt:112-115) makes sure of the HTML escape and of the hint-only result.\n- The smoke checklist has new text for [the Alt+Shift+W item](docs/smoke-checklist.md:229-232) and for [the tool window items](docs/smoke-checklist.md:517-526).\n\n## 7. Open items\n\n- The unit tests do not examine the renderer or `pathAt`, because they are Swing code. Do [the smoke items](docs/smoke-checklist.md:517-526) manually.\n- A window with no worktree does not show its path in the row now. Only the tooltip shows it. Make sure that this is the behavior you want.\n- This commit does not cut long branch names. Later commits do this (`a3d7137` and the fix `b434be1`).\n",
+  "files": [
+    {
+      "path": "src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt",
+      "annotations": [
+        {
+          "newRange": [
+            21,
+            21
+          ],
+          "summary": "A null branch and a blank branch both show the detached text.",
+          "rationale": "Git can give a blank branch for a detached HEAD. The `isNotBlank` check makes sure that the row never starts with an empty text."
+        },
+        {
+          "newRange": [
+            35,
+            37
+          ],
+          "summary": "The function escapes the path and the hint before it puts them in HTML.",
+          "rationale": "A directory name can contain `<` or `&`. Without the escape, Swing reads these characters as HTML and the tooltip shows incorrect text."
+        }
+      ]
+    },
+    {
+      "path": "src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt",
+      "annotations": [
+        {
+          "newRange": [
+            131,
+            131
+          ],
+          "summary": "Speed search adds the directory name and the full path to the row text.",
+          "rationale": "The row text has no directory name now. Without this line, you cannot find a row by its directory name."
+        },
+        {
+          "newRange": [
+            271,
+            271
+          ],
+          "summary": "This check stops a tooltip when the pointer is below the last row.",
+          "rationale": "`locationToIndex` gives the nearest row, also when the pointer is in the empty area below the list. The cell bounds check makes sure that the pointer is on the row."
+        },
+        {
+          "newRange": [
+            398,
+            398
+          ],
+          "summary": "The right label is in the CENTER area, so it gets all the free width.",
+          "rationale": "Together with the right alignment on line 390, the name stays at the right edge, before the X column, at all tool window widths."
+        },
+        {
+          "newRange": [
+            419,
+            419
+          ],
+          "summary": "A window with no worktree shows no text in the right column now.",
+          "rationale": "Before, this column showed the full path. Now only the tooltip shows the path for this type of row."
+        }
+      ]
+    },
+    {
+      "path": "src/test/kotlin/dev/gitfocus/worktrees/WorktreesListTest.kt",
+      "annotations": [
+        {
+          "newRange": [
+            103,
+            103
+          ],
+          "summary": "This assert uses a blank branch, not a null branch.",
+          "rationale": "It makes sure that the `isNotBlank` check in rowText works."
+        }
+      ]
+    }
+  ]
+}

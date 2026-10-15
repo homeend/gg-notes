@@ -1,0 +1,35 @@
+<idea-plugin>
+    <!-- id and name freeze on first Marketplace publication: pick final values
+         before the first upload, never rename afterwards. -->
+    <id>dev.ggnotes</id>
+    <name>GgNotes</name>
+    <vendor email="homeend@wp.pl">gg-notes</vendor>
+    <description><![CDATA[
+        <p>GgNotes brings <code>gg note</code> review notes from the
+        <a href="https://gigagit.code-drill.eu/">gigagit</a> CLI into the IDE.</p>
+        <p>Early scaffold — no user-visible features yet.</p>
+    ]]></description>
+
+    <change-notes><![CDATA[
+        <h3>0.1.0</h3>
+        <ul>
+            <li>Project scaffold.</li>
+        </ul>
+    ]]></change-notes>
+
+    <resource-bundle>messages.GgNotesBundle</resource-bundle>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>Git4Idea</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup id="GgNotes" displayType="BALLOON"/>
+        <postStartupActivity implementation="dev.ggnotes.startup.GgNotesStartupActivity"/>
+    </extensions>
+
+    <actions>
+        <!-- Texts and descriptions come from messages/GgNotesBundle.properties
+             via the convention keys action.<id>.text / action.<id>.description /
+             group.<id>.text. -->
+    </actions>
+</idea-plugin>
