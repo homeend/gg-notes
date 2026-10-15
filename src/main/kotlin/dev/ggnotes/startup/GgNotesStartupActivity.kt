@@ -30,14 +30,40 @@ class GgNotesStartupActivity : ProjectActivity {
      */
     private fun demo(project: Project, service: OverviewService) {
         val done = AtomicBoolean(false)
+        // ggnotes.demo.kind = overview (default) | review | notes: which row kind to open
+        val kind = System.getProperty("ggnotes.demo.kind", "overview")
         service.addSnapshotListener(service) {
-            val repo = service.snapshot.repos.firstOrNull { r -> r.model.commits.any { it.overviews.isNotEmpty() } } ?: return@addSnapshotListener
+            val repo = service.snapshot.repos.firstOrNull { r ->
+                r.model.commits.any { c ->
+                    when (kind) {
+                        "review" -> c.reviews.isNotEmpty()
+                        "notes" -> c.files.isNotEmpty()
+                        else -> c.overviews.isNotEmpty()
+                    }
+                }
+            } ?: return@addSnapshotListener
             if (!done.compareAndSet(false, true)) return@addSnapshotListener
-            val overview = repo.model.commits.first { it.overviews.isNotEmpty() }.overviews.first()
-            LOG.info("GgNotes demo: opening '${overview.title}'")
             val tw = ToolWindowManager.getInstance(project).getToolWindow(OverviewService.TOOL_WINDOW_ID) ?: return@addSnapshotListener
+            val opener: () -> Unit = when (kind) {
+                "review" -> {
+                    val review = repo.model.commits.first { it.reviews.isNotEmpty() }.reviews.first()
+                    LOG.info("GgNotes demo: opening review '${review.title}'")
+                    ({ service.openReview(review, repo.repo) })
+                }
+                "notes" -> {
+                    val entry = repo.model.commits.first { it.files.isNotEmpty() }
+                    val file = entry.files.first()
+                    LOG.info("GgNotes demo: opening notes of '${file.path}'")
+                    ({ service.openNotes(file.threads, file.path, entry.commit, null, repo.repo) })
+                }
+                else -> {
+                    val overview = repo.model.commits.first { it.overviews.isNotEmpty() }.overviews.first()
+                    LOG.info("GgNotes demo: opening '${overview.title}'")
+                    ({ service.open(overview, repo.repo) })
+                }
+            }
             tw.activate({
-                service.open(overview, repo.repo)
+                opener()
                 AppExecutorUtil.getAppScheduledExecutorService().schedule({
                     ApplicationManager.getApplication().invokeLater({ service.goToAnchor(1) }, project.disposed)
                 }, 3, TimeUnit.SECONDS)
