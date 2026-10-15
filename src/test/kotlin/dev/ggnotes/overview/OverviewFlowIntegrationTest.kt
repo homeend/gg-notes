@@ -30,8 +30,12 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
     private lateinit var root: VirtualFile
     private lateinit var sha: String
     private lateinit var stateHome: Path
+    private lateinit var earlyStateHome: Path
 
     override fun setUp() {
+        // before the project opens: nothing of this test may touch the developer's live state dir
+        earlyStateHome = Files.createTempDirectory("ggnotes-state")
+        System.setProperty("ggnotes.env.XDG_STATE_HOME", earlyStateHome.toString())
         super.setUp()
         repoDir = createTempDirectory()
         git("init", "-q", "-b", "main")
@@ -45,8 +49,7 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         // the working file moves on: the anchor must still open the committed text
         File(repoDir, "internal/x/gate.go").appendText("// edited after the commit\n")
 
-        stateHome = createTempDirectory().toPath()
-        System.setProperty("ggnotes.env.XDG_STATE_HOME", stateHome.toString())
+        stateHome = earlyStateHome
         val common = git("rev-parse", "--path-format=absolute", "--git-common-dir").trim()
         val store = stateHome.resolve("gg").resolve("notes").resolve(dev.ggnotes.store.StoreLocator.key(common))
         Files.createDirectories(store)
@@ -62,11 +65,56 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
 
     override fun tearDown() {
         try {
-            System.clearProperty("ggnotes.env.XDG_STATE_HOME")
             OverviewService.getInstance(project).close()
+            com.intellij.openapi.util.Disposer.dispose(dev.ggnotes.steer.SteerService.getInstance(project))
         } finally {
-            super.tearDown()
+            try {
+                super.tearDown()
+            } finally {
+                System.clearProperty("ggnotes.env.XDG_STATE_HOME")
+                runCatching { earlyStateHome.toFile().deleteRecursively() }
+            }
         }
+    }
+
+    /** Steer PLUGIN.md step 1: presence is published, a hand-posted navigate opens the file with 3–4 selected and is answered. */
+    fun testSteerPresenceAndAHandPostedNavigateOpensTheWorkingFile() {
+        val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)!!
+        val steer = dev.ggnotes.steer.SteerService.getInstance(project)
+        val session = ApplicationManager.getApplication().executeOnPooledThread<List<dev.ggnotes.steer.SteerService.RootSession>> { steer.startSync() }.get().single()
+        val top = git("rev-parse", "--show-toplevel").trim()
+        val common = git("rev-parse", "--path-format=absolute", "--git-common-dir").trim()
+        assertEquals(dev.ggnotes.steer.SteerPaths.inboxDir(stateHome, common, top), session.inbox)
+        assertTrue("presence lives under the overridden state dir", session.inbox.startsWith(stateHome))
+        val presence = session.inbox.resolve("ide.json")
+        assertTrue(Files.isRegularFile(presence))
+        val json = com.google.gson.JsonParser.parseString(Files.readString(presence)).asJsonObject
+        assertEquals(top, json.get("worktree").asString)
+        assertEquals(ProcessHandle.current().pid(), json.get("pid").asLong)
+
+        val ide = session.ideDir
+        Files.writeString(ide.resolve(".tmp"), """{"id":"1-1","cmd":"navigate","file":"internal/x/gate.go","line":{"side":"new","no":3,"end":4},"wait":true}""")
+        Files.move(ide.resolve(".tmp"), ide.resolve("cmd-1-1.json"))
+        val reply = ide.resolve("reply-1-1.json")
+        waitFor("reply file") { Files.isRegularFile(reply) }
+        assertEquals("""{"id":"1-1","ok":true,"detail":"opened internal/x/gate.go:3-4 at line 3"}""", Files.readString(reply))
+        assertFalse("the command file was consumed", Files.exists(ide.resolve("cmd-1-1.json")))
+        val editor = FileEditorManager.getInstance(project).selectedTextEditor!!
+        assertEquals("gate.go", FileEditorManager.getInstance(project).selectedFiles.single().name)
+        assertTrue(FileEditorManager.getInstance(project).selectedFiles.single().isInLocalFileSystem)
+        assertEquals(editor.document.getLineStartOffset(2), editor.selectionModel.selectionStart)
+        assertEquals(editor.document.getLineEndOffset(3), editor.selectionModel.selectionEnd)
+        assertEquals(2, editor.caretModel.logicalPosition.line)
+        assertEquals(listOf("f1"), session.memory.openFiles().map { it.id })
+
+        // a command without wait is applied and never answered; an unknown one is refused
+        Files.writeString(ide.resolve("cmd-1-2.json"), """{"id":"1-2","cmd":"navigate","file":"internal/y/call.go","line":{"side":"new","no":9}}""")
+        Files.writeString(ide.resolve("cmd-1-3.json"), """{"id":"1-3","cmd":"dance","wait":true}""")
+        waitFor("unknown command refused") { Files.isRegularFile(ide.resolve("reply-1-3.json")) }
+        assertEquals("""{"id":"1-3","ok":false,"error":"unknown command dance"}""", Files.readString(ide.resolve("reply-1-3.json")))
+        waitFor("call.go opened past its end") { FileEditorManager.getInstance(project).selectedFiles.singleOrNull()?.name == "call.go" }
+        assertFalse(Files.exists(ide.resolve("reply-1-2.json")))
+        assertEquals(0, FileEditorManager.getInstance(project).selectedTextEditor!!.caretModel.logicalPosition.line)
     }
 
     fun testOverviewIsListedOpenedAndItsAnchorOpensTheCommittedFile() {

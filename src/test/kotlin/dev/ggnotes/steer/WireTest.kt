@@ -1,0 +1,64 @@
+package dev.ggnotes.steer
+
+import com.google.gson.JsonParser
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** SPEC §3.1 / §3.2: the command and reply JSON, every field optional but id and cmd. */
+class WireTest {
+
+    @Test
+    fun `the spec's navigate command parses with target line worktree and wait`() {
+        val c = Wire.parseCommand("""{"id":"1-1","cmd":"navigate","file":"src/a.go","target":{"state":"commit","commit":"d5efa035df1f3c4c949040bebb924a35d0ea61a0"},
+            "line":{"side":"new","no":40,"end":60},"worktree":"/home/dev/src/gate","wait":true,"unknown_key":1}""")!!
+        assertEquals("1-1", c.id)
+        assertEquals("navigate", c.cmd)
+        assertEquals("src/a.go", c.file)
+        assertEquals("commit", c.target?.state)
+        assertEquals("d5efa035df1f3c4c949040bebb924a35d0ea61a0", c.target?.commit)
+        assertEquals(40, c.line?.no)
+        assertEquals(60, c.line?.end)
+        assertEquals("new", c.line?.side)
+        assertEquals("/home/dev/src/gate", c.worktree)
+        assertTrue(c.wait)
+        assertNull(c.step)
+        assertFalse(c.background)
+    }
+
+    @Test
+    fun `a minimal command has defaults and the note and overview fields parse`() {
+        val n = Wire.parseCommand("""{"id":"2-2","cmd":"note_add","file":"a.go","start":3,"end":4,"summary":"s","rationale":"r","author":"me","meta":{"k":"v"},"display":{"k":{"show":["badge"]}}}""")!!
+        assertEquals(3, n.start)
+        assertEquals(4, n.end)
+        assertEquals("s", n.summary)
+        assertEquals(mapOf("k" to "v"), n.meta)
+        assertTrue(n.display!!.isJsonObject)
+        assertFalse(n.wait)
+        val o = Wire.parseCommand("""{"id":"3-3","cmd":"overview_add","title":"Tour","text":"# T","background":true}""")!!
+        assertEquals("Tour", o.title)
+        assertTrue(o.background)
+        assertNull(Wire.parseCommand("""{"cmd":"navigate"}"""))
+        assertNull(Wire.parseCommand("not json"))
+        assertNull(Wire.parseCommand("""{"id":"4-4"}"""))
+    }
+
+    @Test
+    fun `replies serialize with only the fields that are set and no html escaping`() {
+        val ok = Wire.toJson(Reply.ok("1-1", "opened src/a.go:3-4 at line 3"))
+        assertEquals("""{"id":"1-1","ok":true,"detail":"opened src/a.go:3-4 at line 3"}""", ok)
+        val fail = Wire.toJson(Reply.fail("1-2", "the IDE shows <root>, not /x"))
+        assertEquals("""{"id":"1-2","ok":false,"error":"the IDE shows <root>, not /x"}""", fail)
+        val files = Wire.toJson(Reply.ok("1-3", "").copy(files = listOf(OpenFileWire("f1", "a.go", "worktree", null, null, 3, "shown", 1))))
+        val parsed = JsonParser.parseString(files).asJsonObject
+        assertEquals("f1", parsed.getAsJsonArray("files")[0].asJsonObject.get("id").asString)
+        assertFalse(parsed.has("detail"))
+        assertFalse(parsed.getAsJsonArray("files")[0].asJsonObject.has("title"))
+        val notes = Wire.toJson(Reply.ok("1-4", "").copy(notes = listOf(NoteWire("t1", "f1", "a.go", 3, 4, "s", null, "agent", false, listOf("x", "y"), null, null))))
+        val np = JsonParser.parseString(notes).asJsonObject.getAsJsonArray("notes")[0].asJsonObject
+        assertEquals(2, np.getAsJsonArray("text").size())
+        assertFalse("false booleans stay out like gg's omitempty", np.has("outdated"))
+    }
+}

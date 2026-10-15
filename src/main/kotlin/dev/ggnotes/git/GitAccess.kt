@@ -39,6 +39,17 @@ object GitAccess {
         return result.output.firstOrNull { it.isNotBlank() }?.trim()
     }
 
+    /** `git rev-parse --show-toplevel`, trimmed: the worktree path gg hashes for its steering inbox (steer SPEC §2). */
+    fun topLevel(project: Project, root: VirtualFile): String? {
+        assertBackground()
+        val h = GitLineHandler(project, root, GitCommand.REV_PARSE)
+        h.setSilent(true)
+        h.addParameters("--show-toplevel")
+        val result = Git.getInstance().runCommand(h)
+        if (!result.success()) return null
+        return result.output.firstOrNull { it.isNotBlank() }?.trim()
+    }
+
     /** The commit's subject line, or null when the commit is not in the repository (SPEC §8.2). */
     fun commitSubject(project: Project, root: VirtualFile, sha: String): String? {
         assertBackground()

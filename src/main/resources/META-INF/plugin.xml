@@ -23,6 +23,15 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.2.0</h3>
+        <ul>
+            <li>Reviews, line notes with replies and live notes on the working tree, read from the
+                same gg store.</li>
+            <li>The IDE is a <code>gg session … --to ide</code> target: an agent in a terminal can
+                open a file at a line or range, highlight lines, leave temporary remarks and show
+                an in-memory overview in the tool window, with no gg running.</li>
+        </ul>
+
         <h3>0.1.0</h3>
         <ul>
             <li>First version: the overview viewer (tool window, document, anchors, remarks).</li>
