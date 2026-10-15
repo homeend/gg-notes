@@ -32,6 +32,14 @@ dependencies {
         bundledPlugin("Git4Idea")
         testFramework(TestFrameworkType.Platform)
     }
+    // Store reader: TOML 1.0 (Apache-2.0; pulls antlr4-runtime, BSD-3) and the
+    // JetBrains markdown parser (Apache-2.0). The platform supplies the Kotlin
+    // stdlib, so it is excluded from the markdown artifact. Gson is bundled by
+    // the platform (lib/util-8.jar) and is not declared here.
+    implementation("org.tomlj:tomlj:1.1.1")
+    implementation("org.jetbrains:markdown:0.7.3") {
+        exclude(group = "org.jetbrains.kotlin")
+    }
     testImplementation("junit:junit:4.13.2")
 }
 
