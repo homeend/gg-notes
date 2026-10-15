@@ -41,6 +41,13 @@ upload.
   read in the background, each note relocated (`Relocator.relocate`) and
   the anchors carry the relocated lines; a committed note is only verified.
   Never cache relocation results: gg's startup sweep rewrites the store.
+- Windows key spelling is CONFIRMED (2026-10-15): the spec branch's gg built
+  for windows/amd64 (`GOOS=windows go build ./cmd/gg` in gigagit's
+  `gg-notes-store-format` worktree, run through WSL interop in
+  `/mnt/t/others/test-1`) printed key `ca3f14ca89ceb043` =
+  sha256(`T:\others\test-1\.git`)[:8] under `%LocalAppData%\gg\notes`;
+  `StoreLocatorTest` pins it. The old `gg.exe` in test-1 (v0.3.0) has no
+  `overview store` verb and its 12 Windows stores are gg's own test repos.
 - Regex rule: never put an alternation inside a repeated group
   (`(?:a|b)*`) over user text — java.util.regex recurses per character and
   a 6 KB prose review overflowed the stack. Character classes only.

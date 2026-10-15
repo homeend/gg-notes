@@ -18,6 +18,15 @@ class StoreLocatorTest {
     }
 
     @Test
+    fun `windows key of T others test-1 matches the oracle run on Windows`() {
+        // `gg overview store --json` (spec branch 026da99e, windows/amd64) in T:\others\test-1
+        // printed key ca3f14ca89ceb043 on 2026-10-15; Windows git prints the common dir with
+        // forward slashes, and clean() turns them into backslashes before hashing (SPEC §3.2).
+        assertEquals("ca3f14ca89ceb043", StoreLocator.key("T:/others/test-1/.git", windows = true))
+        assertEquals("ca3f14ca89ceb043", StoreLocator.key("T:\\others\\test-1\\.git", windows = true))
+    }
+
+    @Test
     fun `key trims whitespace around git output`() {
         assertEquals("d10200a3a219735f", StoreLocator.key("  /work/gigagit/.git\n", windows = false))
     }
