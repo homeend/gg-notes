@@ -46,11 +46,16 @@ data class Overview(
 
 /** Everything a reader found in one store directory. */
 data class StoreContents(
+    /** The part-1 view: the overview records, decoded. */
     val overviews: List<Overview>,
     /** A part had `format` > 3: readable, possibly incomplete (SPEC §8.3). */
     val newerFormat: Boolean,
     /** Files that could not be parsed even after a retry (SPEC §8.1). */
     val problems: List<String>,
+    /** Every classified record of every part (SPEC-part2 §1.1), unknown kinds included. */
+    val records: List<NoteRecord> = emptyList(),
+    /** `[[resolved]]` entries of every part (SPEC-part2 §4.2). */
+    val resolved: List<Resolution> = emptyList(),
 ) {
     companion object {
         val EMPTY = StoreContents(emptyList(), newerFormat = false, problems = emptyList())
