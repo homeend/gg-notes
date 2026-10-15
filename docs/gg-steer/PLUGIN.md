@@ -15,7 +15,7 @@ With the project open, an agent in a terminal can say:
 
 | the agent runs | the IDE does |
 |---|---|
-| `gg session navigate gg://gate/src/a.go@<sha>:40-60 --to ide` | opens `src/a.go` at that commit (read-only revision tab), caret on 40, 40–60 selected; replies `opened src/a.go:40-60 at line 40` |
+| `gg session navigate gg://gate/src/a.go@<sha>:40-60 --to ide` | opens `src/a.go` at that commit (read-only revision tab), caret on 40, 40–60 selected; replies `opened src/a.go:40-60` |
 | `gg session navigate --file src/a.go --new-line 12 --to ide` | opens the working file at line 12 |
 | `gg session highlight add src/a.go:3-4 --tone warn --to ide` | a persistent gutter/background marker on 3–4 |
 | `gg session note add src/a.go:3-4 --summary "…" --rationale "…" --to ide` | a read-only remark box beside lines 3–4 (same overlay the overview remarks use); the file counts as "open" |
@@ -91,22 +91,22 @@ Reply prose is English and parsed by agents: use these exact forms.
 
 | `cmd` | do | reply `detail` / `error` |
 |---|---|---|
-| `navigate` + `file` | resolve the file by `target.state`: absent/`unstaged`/`untracked` → the working file (VFS); `staged` → `GitAccess.indexContent` in a read-only light virtual file; `commit` → `GitAccess.fileContent(sha)` in a read-only revision tab (what v1 already opens for overview anchors). Open it (`FileEditorManager.openTextEditor`), unless `background`: open the tab without activating (`openFile(file, false)`). With `line`: caret at `line.no` (clamped to the last line), `no..end` selected. Register the file in the open-files list (§5). | `opened <file>[:<no>[-<end>]] at line <n>`; past the end: `opened <file>:<asked> at line <last> (line <asked> is past the end, <last> lines)`; no `line`: `opened <file>` |
-| `navigate` + `commit` only | select the commit in the Git log tool window (`VcsLogContentProvider`/`VcsProjectLog.jumpToCommit`) | `showing commit <sha7>` |
-| `navigate` + `step` | from the file in front, go to the next/previous temporary note (§5) by line order | `opened <file>:<n> at line <n>` / `no next note in this diff` · `no previous note in this diff` |
+| `navigate` + `file` | resolve the file by `target.state`: absent/`unstaged`/`untracked` → the working file (VFS); `staged` → `GitAccess.indexContent` in a read-only light virtual file; `commit` → `GitAccess.fileContent(sha)` in a read-only revision tab (what v1 already opens for overview anchors). Open it (`FileEditorManager.openTextEditor`), unless `background`: open the tab without activating (`openFile(file, false)`). With `line`: caret at `line.no` (clamped to the last line), `no..end` selected. Register the file in the open-files list (§5). | `opened <file>:<no>` / `opened <file>:<no>-<end>`; past the end: `opened <file>:<asked>; clamped to line <last>`; no `line`: `opened <file>` |
+| `navigate` + `commit` only | select the commit in the Git log tool window (`VcsLogContentProvider`/`VcsProjectLog.jumpToCommit`) | `revealed commit <sha7>` |
+| `navigate` + `step` | from the file in front, go to the next/previous temporary note (§5) by line order | `opened <file>:<n>` / `no next note in this diff` · `no previous note in this diff` |
 | `navigate` with `line.side == "old"` | refuse (v1 has no diff view) | error `the IDE shows no old side` |
 | `navigate` with `target.state` ∈ `preview`,`ref`,`pair` | refuse | error `the IDE cannot show a <state> target` |
-| `highlight` | a `RangeHighlighter` (gutter mark + line background in the `tone` colour: info/warn/error) on `start..end` of `file` (`side` must be `new`); kept until `highlight_clear` or the file closes | `highlighted <file>:<start>-<end>` |
-| `highlight_clear` | remove all | `cleared` |
+| `highlight` | a `RangeHighlighter` (gutter mark + line background in the `tone` colour: info/warn/error) on `start..end` of `file` (`side` `new` or empty = new); kept until `highlight_clear` or the file closes | `marked <file> new:<start>-<end> as <tone>` |
+| `highlight_clear` | remove all; with `file`, only that file's | `cleared every mark` / `cleared the marks on <file>` |
 | `files` | the open-files list | `files: [...]` (§5), `detail: no open files` when empty |
-| `file_focus` | by `file_id` or `file`; `line` → caret | `focused <path>[ at line <n>]` (an overview: `focused <title>`) / `no open file <name>` |
+| `file_focus` | by `file_id` or `file`; `line` → caret | `focused <path>` — ` at line <n>` appended only when the command named a line (an overview: `focused <title>`) / `no open file <name>` |
 | `note_add` | §5 | the note in `notes: [..]` |
 | `note_list` | §5; `file`/`file_id` restricts | `notes: [...]`, `detail: no notes` when empty |
 | `note_show` | §5 | `notes: [the one]` with `text` |
 | `note_rm` | §5 | `removed t<n>` / `no note t<n>` |
 | `overview_add` / `overview_set` / `overview_list` / `overview_show` / `overview_rm` | §5 | §5 |
 | `focus`, `reload`, `serve` | refuse | error `<cmd> is a gg TUI command` |
-| anything else | refuse | error `unknown command <cmd>` |
+| anything else | refuse | error `unknown command "<cmd>"` (the verb quoted, as the TUI says it) |
 
 Before any of the above: if `worktree` is set and is not one of the
 project's git roots (compare cleaned, slash-form, case-folded on
@@ -160,7 +160,8 @@ Re-anchoring on edits — gg's rule, port it exactly:
 an entry of the open-files list with `source: overview` (id `f<n>`); limits
 and refusals: `an overview needs text`, `the text is over 64 KiB`, `an
 overview needs a title`, `the title must be one line of at most 200
-characters`, at most 20 per root (`error: 20 overviews open`); anchors by
+characters`, at most 20 per root (`20 overviews are open; remove one
+first`); anchors by
 the store-spec part 1 §6 grammar plus `note:t<n>` (an anchor to a
 temporary note → that note's file at its lines), the first 100 count;
 `unresolved` = destinations whose file or note is not found (listed, drawn
@@ -193,7 +194,11 @@ printf '%s' '{"id":"1-1","cmd":"navigate","file":"src/a.go","line":{"side":"new"
 cat $inbox/ide/reply-1-1.json                         # {"id":"1-1","ok":true,"detail":"opened src/a.go:3-4 at line 3"}
 ```
 
-Once gigagit's `feat/steer-ide` is built (`/work/gigagit/.claude/worktrees/steer-ide/bin/gg` after its Task 2), `gg session … --to ide` does the same.
+`gg session … --to ide` does the same with a gg that has it: gigagit's
+`feat/steer-ide` branch (`/work/gigagit/.claude/worktrees/steer-ide/bin/gg`
+while it is unmerged; the installed `gg` once it is). Validate incoming
+files leniently: the schemas leave the verb/state/side vocabularies open on
+purpose — dispatch on them and refuse unknown values with the prose above.
 
 ## 8. Tests the plugin should have
 
