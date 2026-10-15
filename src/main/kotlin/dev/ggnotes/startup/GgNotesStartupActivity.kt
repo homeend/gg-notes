@@ -21,6 +21,8 @@ class GgNotesStartupActivity : ProjectActivity {
         val service = OverviewService.getInstance(project)
         if (System.getProperty("ggnotes.demo") != null) demo(project, service)
         service.refresh()
+        // steer SPEC §2: publish presence so `gg session … --to ide` finds this window
+        dev.ggnotes.steer.SteerService.getInstance(project).start()
     }
 
     /**

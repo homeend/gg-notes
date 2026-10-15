@@ -333,6 +333,25 @@ class OverviewService(private val project: Project) : Disposable {
         }
     }
 
+    /** Re-open a document whose text changed (a session `overview_set`), keeping the walk on the same anchor index. */
+    fun openKeepingAnchor(overview: Overview, repo: GitRepository) {
+        val keep = open?.takeIf { it.overview.identity == overview.identity }?.currentAnchor
+        val previous = open
+        if (previous != null && previous.overview.identity == overview.identity) {
+            // force a fresh render: the early-return in open() keys on identity and updated
+            Disposer.dispose(previous)
+            open = null
+        }
+        open(overview, repo)
+        val o = open ?: return
+        if (keep != null && o.anchors.any { it.index == keep }) {
+            o.currentAnchor = keep
+            o.rendered = MarkdownRenderer.render(o.document?.overview ?: "", keep, o.missing)
+            ui?.showOverview(o)
+            ui?.showAnchor(keep)
+        }
+    }
+
     fun close() {
         open?.let { Disposer.dispose(it) }
         open = null

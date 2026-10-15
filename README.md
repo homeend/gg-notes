@@ -40,6 +40,12 @@ commit, plus remarks on exact lines. Read from gg's own store on disk
 Needs a JDK 17–23 (`JAVA_HOME`, or the sdkman fallback in the scripts).
 Install the zip via Settings ▸ Plugins ▸ gear ▸ *Install Plugin from Disk…*.
 
+- **A `gg session … --to ide` target**: with the project open, an agent in a
+  terminal can open a file at a line or range (working tree, index or a
+  commit), highlight lines, leave temporary remarks that follow the text as
+  you edit, list the open files, and show an in-memory overview in the tool
+  window — through gg's file inbox, with no gg running (`docs/gg-steer/`).
+
 To try it on a checkout: `./gradlew runIde --args=/path/to/checkout`
 (`-Pggnotes.stateHome=<dir>` reads a throwaway store under `<dir>/gg/notes/`).
 

@@ -111,8 +111,27 @@ object RemarkOverlay {
         }
     }
 
+    /**
+     * One box plus its line tint on [first]..[last] of [editor]; the returned
+     * disposables remove them. Shared with the steer session's temporary notes.
+     */
+    fun box(editor: Editor, first: Int, last: Int, remark: Remark): List<com.intellij.openapi.Disposable> {
+        val doc = editor.document
+        val lineCount = doc.lineCount
+        if (first < 1 || first > lineCount) return emptyList()
+        val start = doc.getLineStartOffset(first - 1)
+        val end = doc.getLineEndOffset((last - 1).coerceIn(first - 1, lineCount - 1))
+        val out = ArrayList<com.intellij.openapi.Disposable>()
+        val tint = TextAttributes().apply { backgroundColor = LINE_TINT }
+        val h = editor.markupModel.addRangeHighlighter(start, end, HighlighterLayer.SELECTION - 1, tint, HighlighterTargetArea.LINES_IN_RANGE)
+        out += com.intellij.openapi.Disposable { if (h.isValid) h.dispose() }
+        editor.inlayModel.addBlockElement(start, InlayProperties().showAbove(true).relatesToPrecedingText(false).priority(100), RemarkBox(remark))
+            ?.let { out += it }
+        return out
+    }
+
     /** The remark box: summary in bold, rationale (wrapped) beneath, drawn above the first remarked line. */
-    private class RemarkBox(val remark: Remark) : EditorCustomElementRenderer {
+    class RemarkBox(val remark: Remark) : EditorCustomElementRenderer {
 
         private fun font(editor: Editor): Font = editor.colorsScheme.getFont(EditorFontType.PLAIN)
 
