@@ -152,23 +152,29 @@ class SteerService(private val project: Project) : Disposable {
         for (s in sessions.values) runCatching { Presence.touch(s.inbox, s.presenceJson) }
     }
 
-    /** Drain every sub-inbox; each command runs on the worker, in order, and is answered there. */
+    /**
+     * Drain every sub-inbox ON THE WORKER: listing, reading, deleting, handling
+     * and replying happen on one thread, so a poll wake and a watcher wake can
+     * never both pick up the same command (PLUGIN.md §6: one at a time, in order).
+     */
     fun drainAll() {
         if (project.isDisposed) return
-        for (s in sessions.values) {
-            val commands = runCatching { Inbox.drain(s.ideDir) }.getOrElse { emptyList() }
-            for (c in commands) {
-                worker.execute {
-                    val reply = try {
-                        handler.handle(s, c)
-                    } catch (t: Throwable) {
-                        LOG.warn("GgNotes steer: ${c.cmd} ${c.id} failed", t)
-                        Reply.fail(c.id, t.message ?: t.javaClass.simpleName)
+        runCatching {
+            worker.execute {
+                for (s in sessions.values) {
+                    val commands = runCatching { Inbox.drain(s.ideDir) }.getOrElse { emptyList() }
+                    for (c in commands) {
+                        val reply = try {
+                            handler.handle(s, c)
+                        } catch (t: Throwable) {
+                            LOG.warn("GgNotes steer: ${c.cmd} ${c.id} failed", t)
+                            Reply.fail(c.id, t.message ?: t.javaClass.simpleName)
+                        }
+                        if (c.wait) runCatching { Inbox.writeReply(s.ideDir, reply) }.onFailure { LOG.warn("GgNotes steer: reply ${c.id}", it) }
                     }
-                    if (c.wait) runCatching { Inbox.writeReply(s.ideDir, reply) }.onFailure { LOG.warn("GgNotes steer: reply ${c.id}", it) }
                 }
             }
-        }
+        } // a rejected execution after shutdown is nothing to report
     }
 
     override fun dispose() {

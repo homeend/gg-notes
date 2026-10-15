@@ -141,11 +141,11 @@ class SessionMemory(val root: String) {
     /** Most recently shown first. */
     fun openFiles(): List<OpenFile> = synchronized(lock) { files.values.sortedByDescending { it.lastShown } }
 
-    /** SPEC §5 wire shape; the IDE says which entry is on screen, where its caret is and how many notes it carries. */
-    fun wire(f: OpenFile, shownId: String?, caretLine: (OpenFile) -> Int, noteCount: (OpenFile) -> Int): OpenFileWire =
+    /** SPEC §5 wire shape; the IDE says whether each entry is on screen, where its caret is and how many notes it carries. */
+    fun wire(f: OpenFile, isShown: (OpenFile) -> Boolean, caretLine: (OpenFile) -> Int, noteCount: (OpenFile) -> Int): OpenFileWire =
         OpenFileWire(
             id = f.id, path = f.path, source = f.source, title = f.title, rev = f.rev,
-            line = caretLine(f), state = if (f.id == shownId) "shown" else "background", notes = noteCount(f),
+            line = caretLine(f), state = if (isShown(f)) "shown" else "background", notes = noteCount(f),
         )
 
     // ---- temporary notes -------------------------------------------------------------------

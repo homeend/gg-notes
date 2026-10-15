@@ -244,11 +244,12 @@ class SteerHandler(private val project: Project, private val service: SteerServi
         val fem = FileEditorManager.getInstance(project)
         val selected = fem.selectedFiles.firstOrNull()
         val openOverview = OverviewService.getInstance(project).open?.overview
-        val shownId = s.memory.openFiles().firstOrNull { f ->
-            if (f.source == "overview") openOverview?.viewKind == "session:${f.id}:" else s.files[f.id] == selected
-        }?.id
+        // shown per entry: an overview on the tool window and the file in the selected tab are both shown
+        val isShown: (SessionMemory.OpenFile) -> Boolean = { f ->
+            if (f.source == "overview") openOverview?.viewKind == "session:${f.id}:" else selected != null && s.files[f.id] == selected
+        }
         return s.memory.openFiles().map { f ->
-            s.memory.wire(f, shownId,
+            s.memory.wire(f, isShown,
                 caretLine = { entry ->
                     val vf = s.files[entry.id]
                     val editor = if (vf != null && vf == selected) fem.selectedTextEditor else null

@@ -44,7 +44,7 @@ class SessionMemoryTest {
     fun `the wire shape of the list`() {
         val m = SessionMemory("/w")
         val f = m.touchFile("overview", "overview-1.md", null, title = "Tour")
-        val wire = m.openFiles().map { m.wire(it, shownId = f.id, caretLine = { 0 }, noteCount = { 0 }) }
+        val wire = m.openFiles().map { m.wire(it, isShown = { it.id == f.id }, caretLine = { 0 }, noteCount = { 0 }) }
         assertEquals(listOf(OpenFileWire("f1", "overview-1.md", "overview", "Tour", null, 0, "shown", 0)), wire)
     }
 }
