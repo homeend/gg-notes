@@ -115,6 +115,62 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         waitFor("call.go opened past its end") { FileEditorManager.getInstance(project).selectedFiles.singleOrNull()?.name == "call.go" }
         assertFalse(Files.exists(ide.resolve("reply-1-2.json")))
         assertEquals(0, FileEditorManager.getInstance(project).selectedTextEditor!!.caretModel.logicalPosition.line)
+
+        // step 2: a commit target opens a read-only revision tab; staged reads the index; past-the-end prose; files; file_focus; highlight
+        fun post(id: String, body: String): com.google.gson.JsonObject {
+            Files.writeString(ide.resolve(".tmp-$id"), body)
+            Files.move(ide.resolve(".tmp-$id"), ide.resolve("cmd-$id.json"))
+            waitFor("reply $id") { Files.isRegularFile(ide.resolve("reply-$id.json")) }
+            return com.google.gson.JsonParser.parseString(Files.readString(ide.resolve("reply-$id.json"))).asJsonObject
+        }
+        val atCommit = post("2-1", """{"id":"2-1","cmd":"navigate","file":"internal/x/gate.go","target":{"state":"commit","commit":"$sha"},"line":{"side":"new","no":4},"wait":true}""")
+        assertEquals("opened internal/x/gate.go:4 at line 4", atCommit.get("detail").asString)
+        val revisionFile = FileEditorManager.getInstance(project).selectedFiles.single()
+        assertFalse("the working file moved on, so this is the revision tab", revisionFile.isInLocalFileSystem)
+        assertFalse(FileEditorManager.getInstance(project).selectedTextEditor!!.document.text.contains("edited after the commit"))
+
+        git("add", "internal/x/gate.go")
+        val staged = post("2-2", """{"id":"2-2","cmd":"navigate","file":"internal/x/gate.go","target":{"state":"staged"},"line":{"side":"new","no":99},"wait":true}""")
+        assertEquals(staged.toString(), "opened internal/x/gate.go:99 at line 6 (line 99 is past the end, 6 lines)", staged.get("detail")?.asString)
+        assertTrue(FileEditorManager.getInstance(project).selectedTextEditor!!.document.text.contains("edited after the commit"))
+        assertFalse(FileEditorManager.getInstance(project).selectedFiles.single().isWritable)
+
+        val missing = post("2-3", """{"id":"2-3","cmd":"navigate","file":"nope.go","wait":true}""")
+        assertEquals("nope.go is not in the working tree", missing.get("error").asString)
+        val preview = post("2-4", """{"id":"2-4","cmd":"navigate","file":"internal/x/gate.go","target":{"state":"preview","source":"a","target":"b"},"wait":true}""")
+        assertEquals("the IDE cannot show a preview target", preview.get("error").asString)
+        val old = post("2-5", """{"id":"2-5","cmd":"navigate","file":"internal/x/gate.go","line":{"side":"old","no":1},"wait":true}""")
+        assertEquals("the IDE shows no old side", old.get("error").asString)
+        val wrongTree = post("2-6", """{"id":"2-6","cmd":"files","worktree":"/somewhere/else","wait":true}""")
+        assertTrue(wrongTree.get("error").asString, wrongTree.get("error").asString.startsWith("the IDE shows ") && wrongTree.get("error").asString.endsWith(", not /somewhere/else"))
+
+        val files = post("2-7", """{"id":"2-7","cmd":"files","wait":true}""")
+        val list = files.getAsJsonArray("files").map { it.asJsonObject }
+        assertEquals("most recently shown first", "internal/x/gate.go", list[0].get("path").asString)
+        assertEquals("shown", list[0].get("state").asString)
+        assertTrue(list.drop(1).all { it.get("state").asString == "background" })
+        assertEquals(listOf("f1", "f2", "f3", "f4"), list.map { it.get("id").asString }.sorted())
+        val commitEntry = list.single { it.has("rev") && it.get("rev").asString == sha }
+        assertEquals("commit", commitEntry.get("source").asString)
+
+        val focus = post("2-8", """{"id":"2-8","cmd":"file_focus","file_id":"f1","line":{"side":"new","no":2},"wait":true}""")
+        assertEquals("focused internal/x/gate.go at line 2", focus.get("detail").asString)
+        assertTrue(FileEditorManager.getInstance(project).selectedFiles.single().isInLocalFileSystem)
+        assertEquals(1, FileEditorManager.getInstance(project).selectedTextEditor!!.caretModel.logicalPosition.line)
+        assertEquals("no open file f9", post("2-9", """{"id":"2-9","cmd":"file_focus","file_id":"f9","wait":true}""").get("error").asString)
+
+        val hl = post("2-10", """{"id":"2-10","cmd":"highlight","file":"internal/x/gate.go","side":"new","start":3,"end":4,"tone":"warn","wait":true}""")
+        assertEquals("highlighted internal/x/gate.go:3-4", hl.get("detail").asString)
+        assertEquals(1, session.highlights.size)
+        assertTrue(session.highlights.single().isValid)
+        assertEquals("cleared", post("2-11", """{"id":"2-11","cmd":"highlight_clear","wait":true}""").get("detail").asString)
+        assertEquals(0, session.highlights.size)
+        assertEquals("focus is a gg TUI command", post("2-12", """{"id":"2-12","cmd":"focus","panel":"commits","wait":true}""").get("error").asString)
+
+        // a closed file leaves the list
+        ApplicationManager.getApplication().invokeAndWait { FileEditorManager.getInstance(project).closeFile(revisionFile) }
+        val after = post("2-13", """{"id":"2-13","cmd":"files","wait":true}""").getAsJsonArray("files").map { it.asJsonObject.get("id").asString }
+        assertFalse(after.contains(commitEntry.get("id").asString))
     }
 
     fun testOverviewIsListedOpenedAndItsAnchorOpensTheCommittedFile() {

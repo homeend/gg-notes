@@ -46,6 +46,25 @@ class SteerService(private val project: Project) : Disposable {
         val memory: SessionMemory,
     ) {
         val ideDir: Path get() = SteerPaths.ideDir(inbox)
+        /** The virtual file behind each open-files entry (IDE side of [SessionMemory]). */
+        val files = ConcurrentHashMap<String, VirtualFile>()
+        /** Live `highlight` markers; cleared by `highlight_clear` or when their file closes. */
+        val highlights = java.util.concurrent.CopyOnWriteArrayList<com.intellij.openapi.editor.markup.RangeHighlighter>()
+
+        /** A file the user closed leaves the list with its highlights (PLUGIN.md §5). */
+        fun fileClosed(vf: VirtualFile) {
+            for ((id, f) in files.entries.toList()) {
+                if (f == vf) {
+                    files.remove(id)
+                    memory.removeFile(id)
+                }
+            }
+            highlights.removeIf { h ->
+                val closed = !h.isValid || com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getFile(h.document) == vf
+                if (closed) runCatching { if (h.isValid) h.dispose() }
+                closed
+            }
+        }
     }
 
     private val sessions = ConcurrentHashMap<String, RootSession>()
@@ -72,6 +91,15 @@ class SteerService(private val project: Project) : Disposable {
                 LOG.warn("GgNotes steer: start failed", t)
             }
         }
+    }
+
+    init {
+        project.messageBus.connect(this).subscribe(com.intellij.openapi.fileEditor.FileEditorManagerListener.FILE_EDITOR_MANAGER,
+            object : com.intellij.openapi.fileEditor.FileEditorManagerListener {
+                override fun fileClosed(source: com.intellij.openapi.fileEditor.FileEditorManager, file: VirtualFile) {
+                    for (s in sessions.values) s.fileClosed(file)
+                }
+            })
     }
 
     /** Blocking variant for tests: register every root now and return the sessions. */

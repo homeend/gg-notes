@@ -9,14 +9,10 @@ import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.AppExecutorUtil
-import com.intellij.vcsUtil.VcsUtil
 import dev.ggnotes.GgNotesBundle
 import dev.ggnotes.store.RenderedAnchor
-import git4idea.GitContentRevision
-import git4idea.GitRevisionNumber
 
 /**
  * Opens an anchor's file AT THE OVERVIEW'S COMMIT (the working-tree file
@@ -44,7 +40,7 @@ object AnchorNavigator {
                 notify(project, GgNotesBundle.message("anchor.missing", anchor.target.path, GgNotesBundle.message("working.tree")))
                 return@execute
             }
-            val file: VirtualFile = if (sameAsWorking) working!! else revisionFile(project, root, o.overview.commit, anchor.target.path)
+            val file: VirtualFile = if (sameAsWorking) working!! else RevisionFiles.atCommit(project, root, o.overview.commit, anchor.target.path)
             file.putUserData(OVERVIEW_FILE_KEY, OverviewFileRef(o.overview.identity, root, o.overview.commit, anchor.target.path))
             ApplicationManager.getApplication().invokeLater({
                 if (project.isDisposed || service.open !== o) return@invokeLater
@@ -58,14 +54,6 @@ object AnchorNavigator {
                 RemarkOverlay.apply(project, o, editor)
             }, project.disposed)
         }
-    }
-
-    private fun revisionFile(project: Project, root: VirtualFile, sha: String, path: String): VirtualFile {
-        val filePath = VcsUtil.getFilePath(root.path + "/" + path, false)
-        val revision = GitContentRevision.createRevision(filePath, GitRevisionNumber(sha), project)
-        // warm the revision's content cache off the EDT so the editor opens without a git call
-        runCatching { revision.content }
-        return ContentRevisionVirtualFile.create(revision)
     }
 
     /** Caret on the first line, the whole range selected, scrolled to the middle. */
