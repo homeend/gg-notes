@@ -13,7 +13,19 @@ upload.
 ## Build & test
 
 - `./test.sh` — full suite (`./test.sh --tests "dev.ggnotes.*"` passes args
-  through). `./test-integration.sh` — only `*IntegrationTest` classes.
+  through). `./test-integration.sh` — only `*IntegrationTest` classes
+  (`OverviewFlowIntegrationTest` builds a real git repo and drives the whole
+  flow — store resolution through git4idea, open, anchor, editor at the
+  commit, remark overlay — under a temp `XDG_STATE_HOME`).
+- `./gradlew runIde --args=/home/homeend/git-focus` — the acceptance
+  scenario of `AGENTS.md` §3.2 in the sandbox IDE (trust dialog suppressed).
+  Add `-Pggnotes.stateHome=<dir>` to read a throwaway store at
+  `<dir>/gg/notes/<key>/` instead of `~/.local/state`. Inside a running IDE
+  the system property `ggnotes.env.XDG_STATE_HOME` overrides the variable.
+- Layout: `dev.ggnotes.store` is pure Kotlin (locator, reader, link
+  classifier, markdown renderer, grouping) and is where the unit tests
+  live; `dev.ggnotes.git` wraps git4idea; `dev.ggnotes.overview` is the
+  service, tool window, document pane, navigation, overlays and banner.
 - `./dist.sh [deploy-dir]` — builds `build/distributions/gg-notes-<version>.zip`;
   with a deploy-dir the dir is created, wiped (guarded against `/` and
   `$HOME`) and the fresh zip copied in. `.bat` twins for Windows.
@@ -25,10 +37,11 @@ upload.
 
 ## Workflow
 
-- Each feature gets its own git worktree: branch `feat/<name>`, worktree as
-  a repo sibling under `<repo>-worktrees/<branch>`, per-task commits on the
-  branch, merge to master only after the suite is green, then remove the
-  worktree and branch.
+- Each feature gets its own git worktree: branch `feat/<name>`, per-task
+  commits on the branch, merge to master only after the suite is green,
+  then remove the worktree and branch. `/work` is root-owned, so a sibling
+  `<repo>-worktrees/` dir cannot be created there: worktrees live under
+  the project-local, git-ignored `.claude/worktrees/<name>` instead.
 - Version lives in `build.gradle.kts` (`0.1.0+<sha>`); bump it and refresh
   `<change-notes>` in `plugin.xml` for every release.
 - All user-visible strings go through `GgNotesBundle` /

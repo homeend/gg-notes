@@ -21,7 +21,14 @@ object StoreLocator {
         return home.resolve(".local").resolve("state").resolve("gg").resolve("notes")
     }
 
-    fun defaultBaseDir(): Path = baseDir(System::getenv, isWindows(), Paths.get(System.getProperty("user.home")))
+    /**
+     * The base dir of this process. A system property `ggnotes.env.<NAME>`
+     * overrides the environment variable `<NAME>` (e.g.
+     * `-Dggnotes.env.XDG_STATE_HOME=/tmp/x`), for tests and for pointing a
+     * running IDE at a throwaway store.
+     */
+    fun defaultBaseDir(): Path =
+        baseDir({ name -> System.getProperty("ggnotes.env.$name") ?: System.getenv(name) }, isWindows(), Paths.get(System.getProperty("user.home")))
 
     fun isWindows(): Boolean = System.getProperty("os.name").orEmpty().lowercase().startsWith("windows")
 

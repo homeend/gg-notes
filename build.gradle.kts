@@ -101,6 +101,15 @@ intellijPlatform {
     }
 }
 
+// Acceptance runs (AGENTS.md §3.2): `./gradlew runIde --args=/path/to/checkout`
+// opens that project in the sandbox IDE without the trust dialog;
+// `-Pggnotes.stateHome=/tmp/x` points gg's store lookup at a throwaway
+// XDG_STATE_HOME holding notes/<key>/commits.toml.
+tasks.named<org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask>("runIde") {
+    systemProperty("idea.trust.all.projects", "true")
+    providers.gradleProperty("ggnotes.stateHome").orNull?.let { environment("XDG_STATE_HOME", it) }
+}
+
 kotlin {
     jvmToolchain(21)
     compilerOptions {

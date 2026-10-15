@@ -128,6 +128,10 @@ class OverviewService(private val project: Project) : Disposable {
             try {
                 val snap = computeSnapshot()
                 snapshot = snap
+                LOG.info("GgNotes: " + snap.repos.joinToString("; ") { r ->
+                    "${r.repo.root.name}: ${r.contents.overviews.size} overview(s) in ${r.storeDir ?: "<no store>"}" +
+                        (r.error?.let { " ($it)" } ?: "") + (if (r.contents.problems.isEmpty()) "" else " problems=${r.contents.problems}")
+                }.ifEmpty { "no git repositories" })
                 invokeLater { snapshotListeners.forEach { it() } }
             } catch (t: Throwable) {
                 LOG.warn("GgNotes: refresh failed", t)
@@ -135,6 +139,14 @@ class OverviewService(private val project: Project) : Disposable {
                 refreshing.set(false)
             }
         }
+    }
+
+    /** Read every store on the calling thread (never the EDT) and publish the result; for tests and tools. */
+    fun refreshSync(): Snapshot {
+        val snap = computeSnapshot()
+        snapshot = snap
+        invokeLater { snapshotListeners.forEach { it() } }
+        return snap
     }
 
     private fun computeSnapshot(): Snapshot {
