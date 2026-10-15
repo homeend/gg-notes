@@ -36,7 +36,9 @@ object MarkdownRenderer {
 
     const val MAX_ANCHORS = 100
 
-    private val INLINE_LINK = Regex("""!?\[((?:[^\[\]\\]|\\.)*)\]\(([^)\s]+)(\s+"[^"]*")?\)""")
+    // character classes only: an alternation inside a repeated group recurses per
+    // character in java.util.regex and overflows the stack on a long prose review
+    private val INLINE_LINK = Regex("""!?\[([^\[\]]{0,2000})\]\(([^)\s]{1,2000})(\s+"[^"]*")?\)""")
 
     /**
      * SPEC-part2 §3.2: a review's summary (and a prose review) has NO anchors.

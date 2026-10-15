@@ -99,6 +99,52 @@ class GitFocusAcceptanceIntegrationTest : HeavyPlatformTestCase() {
         assertEquals(remarks.size, editor.inlayModel.getBlockElementsInRange(0, doc.textLength).size)
     }
 
+    /** AGENTS.md §5: the live store's 7 other records — a prose review and six line notes gg wrote — list under their commits. */
+    fun testLiveStoreListsTheProseReviewAndTheSixLineNotesUnderTheirCommits() {
+        if (!prerequisites()) return
+        val repo = mapRepository()
+        val service = OverviewService.getInstance(project)
+        val snapshot = ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { service.refreshSync() }.get()
+        val repoOverviews = snapshot.repos.single()
+        assertEquals(8, repoOverviews.contents.records.size)
+        val model = repoOverviews.model
+        val reviewCommit = model.commits.single { it.commit.startsWith("4e55504b") }
+        val review = reviewCommit.reviews.single()
+        assertEquals("fd1eaedb", review.id)
+        assertTrue("gg stored this review as prose", review.content is dev.ggnotes.store.ReviewContent.Prose)
+        assertNotNull("the reviewed commit is in the checkout", reviewCommit.subject)
+
+        val notesCommit = model.commits.single { it.commit.startsWith("b434be1") }
+        assertEquals(listOf(
+            "src/main/kotlin/dev/gitfocus/worktrees/RowTextFit.kt",
+            "src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt",
+            "src/test/kotlin/dev/gitfocus/worktrees/RowTextFitTest.kt",
+        ), notesCommit.files.map { it.path })
+        assertEquals(6, notesCommit.files.sumOf { it.threads.size })
+
+        // the prose review opens as markdown, never as "cannot render"
+        service.openReview(review, repo)
+        waitFor("review opened") { service.open?.overview?.id == "fd1eaedb" }
+        val reviewDoc = service.open!!.document!!
+        assertTrue(reviewDoc.overview.length > 1000)
+        assertFalse(reviewDoc.overview.contains("cannot be rendered"))
+
+        // the two notes on RowTextFit.kt verify against the file at the commit and open it there
+        val fit = notesCommit.files.single { it.path.endsWith("RowTextFit.kt") }
+        assertEquals(listOf(63, 67), fit.threads.map { it.root.first })
+        service.openNotes(fit.threads, fit.path, notesCommit.commit, null, repo)
+        waitFor("notes opened") { service.open?.overview?.viewKind?.startsWith("notes:") == true }
+        val notesDoc = service.open!!.document!!
+        assertFalse("every fingerprint verifies: no stale mark", notesDoc.overview.contains("not found"))
+        assertFalse(notesDoc.overview.contains("no fingerprint"))
+        assertEquals(listOf(63 to 63, 67 to 67), notesDoc.files.single().annotations.map { it.first to it.last })
+        service.goToAnchor(1)
+        waitFor("RowTextFit.kt opened") { FileEditorManager.getInstance(project).selectedFiles.singleOrNull()?.name == "RowTextFit.kt" }
+        val editor = FileEditorManager.getInstance(project).selectedTextEditor!!
+        assertEquals(editor.document.getLineStartOffset(62), editor.selectionModel.selectionStart)
+        waitFor("two remark boxes") { editor.inlayModel.getBlockElementsInRange(0, editor.document.textLength).size == 2 }
+    }
+
     fun testFixtureStoreUnderOverriddenStateHomeShowsExactlyTheTwoFixtureOverviews() {
         if (!prerequisites()) return
         val stateHome = createTempDirectory().toPath()

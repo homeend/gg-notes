@@ -22,10 +22,28 @@ upload.
   Add `-Pggnotes.stateHome=<dir>` to read a throwaway store at
   `<dir>/gg/notes/<key>/` instead of `~/.local/state`. Inside a running IDE
   the system property `ggnotes.env.XDG_STATE_HOME` overrides the variable.
-- Layout: `dev.ggnotes.store` is pure Kotlin (locator, reader, link
-  classifier, markdown renderer, grouping) and is where the unit tests
-  live; `dev.ggnotes.git` wraps git4idea; `dev.ggnotes.overview` is the
-  service, tool window, document pane, navigation, overlays and banner.
+- Layout: `dev.ggnotes.store` is pure Kotlin and is where the unit tests
+  live: `StoreReader` (every part, every record classified per
+  SPEC-part2 §1.1), `Reviews` (review documents, fingerprints, threads,
+  counts), `Relocator` (context_hash, §5.2 relocation, blob ids),
+  `StoreModel` (commits → overviews / reviews / files → threads; working
+  entries per worktree), `ReviewComposer` / `NoteComposer` (a review or a
+  file's threads as the document the viewer shows), `MarkdownRenderer`,
+  `LinkClassifier`. `dev.ggnotes.git` wraps git4idea; `dev.ggnotes.overview`
+  is the service, tool window, document pane, navigation, overlays, banner.
+- One viewer for everything: a review and a note thread are turned into an
+  `OverviewDocument` (markdown + per-file boxes) and opened through the
+  overview machinery, so anchors, Back, the banner, missing-anchor greying
+  and the editor overlays are shared. `Overview.viewKind` keeps their
+  identities apart; `Overview.liveWorktree` makes anchors resolve against
+  the working tree instead of a commit.
+- Live notes: the working file (State 3/4) or the index copy (State 2) is
+  read in the background, each note relocated (`Relocator.relocate`) and
+  the anchors carry the relocated lines; a committed note is only verified.
+  Never cache relocation results: gg's startup sweep rewrites the store.
+- Regex rule: never put an alternation inside a repeated group
+  (`(?:a|b)*`) over user text — java.util.regex recurses per character and
+  a 6 KB prose review overflowed the stack. Character classes only.
 - `./dist.sh [deploy-dir]` — builds `build/distributions/gg-notes-<version>.zip`;
   with a deploy-dir the dir is created, wiped (guarded against `/` and
   `$HOME`) and the fresh zip copied in. `.bat` twins for Windows.

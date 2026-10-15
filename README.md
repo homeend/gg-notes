@@ -16,6 +16,18 @@ commit, plus remarks on exact lines. Read from gg's own store on disk
   banner above the editor goes back to the overview (also `Alt+Shift+O`).
 - **Remarks**: boxes above their lines, a tint over them, gutter bands on
   every anchor of the file — only while that overview is open.
+- **Reviews** (commit, range, branch, pull request, merge preview, pair,
+  working changes): listed under their commit with the author, date and
+  the counts of count-declared meta; opened, the summary, the files with
+  every remark (new-side remarks clickable and boxed, old-side listed),
+  replies under their remark, the review's own overview; prose reviews
+  render as markdown; a working review says when the tree has changed.
+- **Line notes**: under their commit's files as threads with replies and
+  resolutions (collapsed, never hidden); a scoped note under its review;
+  committed notes verified against the file at the commit, live notes in
+  `worktrees/<wkey>.toml` relocated against the working file (active,
+  moved, stale, orphaned) and opened in the working file itself; notes
+  gg's startup sweep will drop are marked.
 
 ## Build
 
