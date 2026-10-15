@@ -13,9 +13,14 @@ object ReviewComposer {
 
     private val DATE = DateTimeFormatter.ISO_LOCAL_DATE
 
-    fun compose(review: Review): OverviewDocument {
+    /** [treeChanged]: the working-review files whose bytes no longer match (SPEC-part2 §5.1), shown first. */
+    fun compose(review: Review, treeChanged: List<String> = emptyList()): OverviewDocument {
         val md = StringBuilder()
         val files = ArrayList<FileRemarks>()
+        if (treeChanged.isNotEmpty()) {
+            md.append("⚠ **The tree has changed since this review:** ")
+                .append(treeChanged.joinToString(", ") { "`$it`" }).append("\n\n")
+        }
         when (val content = review.content) {
             is ReviewContent.Prose -> md.append(MarkdownRenderer.neutralizeAnchors(content.markdown.trim()))
             is ReviewContent.CannotRender -> md.append("_This review cannot be rendered: ").append(content.reason).append("_")

@@ -73,6 +73,18 @@ class NoteComposerTest {
     }
 
     @Test
+    fun `a line note older than the sweep age is marked as one gg will drop`() {
+        val threads = gateThreads()
+        val question = threads.single { it.root.id == "aa110001" } // created 2026-10-14
+        val placements = mapOf("aa110001" to Relocation(RelocationStatus.ACTIVE, 3, 4))
+        val fresh = NoteComposer.compose("internal/x/gate.go", listOf(question), placements, now = java.time.OffsetDateTime.parse("2026-10-20T00:00:00Z"))
+        assertFalse(fresh.overview, fresh.overview.contains("next start"))
+        val old = NoteComposer.compose("internal/x/gate.go", listOf(question), placements, now = java.time.OffsetDateTime.parse("2026-12-01T00:00:00Z"))
+        assertTrue(old.overview, old.overview.contains("gg drops it on its next start"))
+        assertTrue(NoteComposer.sweepDue(question.root, java.time.OffsetDateTime.parse("2026-12-01T00:00:00Z")))
+    }
+
+    @Test
     fun `old-side notes and forge drafts are listed but not placed`() {
         val threads = gateThreads()
         val question = threads.single { it.root.id == "aa110001" }

@@ -24,6 +24,7 @@ import dev.ggnotes.store.RenderedDocument
 import dev.ggnotes.store.RepoModel
 import dev.ggnotes.store.Review
 import dev.ggnotes.store.ReviewComposer
+import dev.ggnotes.store.Reviews
 import dev.ggnotes.store.StoreContents
 import dev.ggnotes.store.StoreLocator
 import dev.ggnotes.store.StoreModel
@@ -54,6 +55,8 @@ class RepoOverviews(
     val model: RepoModel,
     /** A problem resolving the store (git failed), shown as a row. */
     val error: String?,
+    /** Working reviews whose `files[].blob` no longer match the tree, by review id (SPEC-part2 §5.1). */
+    val treeChanged: Map<String, List<String>> = emptyMap(),
 )
 
 /** What the tool window shows: every repository of the project. */
@@ -177,7 +180,9 @@ class OverviewService(private val project: Project) : Disposable {
                     // live records belong to the checkout gg wrote them in: keep the ones naming this root
                     m.copy(working = m.working.filter { sameCheckout(it.worktree, repo.root) })
                 }
-                RepoOverviews(repo, dir, contents, head, model, null)
+                val changed = HashMap<String, List<String>>()
+                for (w in model.working) for (rv in w.reviews) treeChanged(rv, repo).takeIf { it.isNotEmpty() }?.let { changed[rv.id] = it }
+                RepoOverviews(repo, dir, contents, head, model, null, changed)
             }
         }
         signature = sig
@@ -263,12 +268,26 @@ class OverviewService(private val project: Project) : Disposable {
     /** A review through the overview viewer: new-side remarks are anchors and boxes, old-side ones are listed. */
     fun openReview(review: Review, repo: GitRepository) {
         val r = review.record
-        open(Overview(
+        fun asOverview(treeChanged: List<String>) = Overview(
             id = r.id, title = review.title, author = r.author, commit = r.address.commit, branch = r.address.branch,
             preview = r.preview, prNumber = r.prNumber, created = r.created, updated = r.updated,
-            document = DocumentResult.Ok(ReviewComposer.compose(review)), sourceFile = r.sourceFile,
+            document = DocumentResult.Ok(ReviewComposer.compose(review, treeChanged)), sourceFile = r.sourceFile,
             viewKind = "review:${r.id}:", liveWorktree = r.address.worktree.takeIf { r.isLive },
-        ), repo)
+        )
+        if (!r.isLive) {
+            open(asOverview(emptyList()), repo)
+            return
+        }
+        // a working review: compare its files[].blob with the working bytes first (SPEC-part2 §5.1)
+        AppExecutorUtil.getAppExecutorService().execute {
+            val changed = treeChanged(review, repo)
+            invokeLater { open(asOverview(changed), repo) }
+        }
+    }
+
+    /** Background only: the working-review files whose bytes no longer match what it saw. */
+    fun treeChanged(review: Review, repo: GitRepository): List<String> = Reviews.treeChanged(review) { path ->
+        Path.of(repo.root.path, path).let { f -> if (Files.isRegularFile(f)) runCatching { Files.readAllBytes(f) }.getOrNull() else null }
     }
 
     /**

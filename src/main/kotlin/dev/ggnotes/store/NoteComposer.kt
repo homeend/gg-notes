@@ -1,5 +1,6 @@
 package dev.ggnotes.store
 
+import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 
 /**
@@ -12,7 +13,16 @@ object NoteComposer {
 
     private val DATE = DateTimeFormatter.ISO_LOCAL_DATE
 
-    fun compose(path: String, threads: List<NoteThread>, placements: Map<String, Relocation>): OverviewDocument {
+    /** SPEC-part2 §4.1 lifecycle: gg's default `[notes] max_age_days`. */
+    const val SWEEP_AGE_DAYS = 30L
+
+    /** True when gg's next startup sweep in that repository would drop this line note for age. */
+    fun sweepDue(note: NoteRecord, now: OffsetDateTime): Boolean {
+        val created = note.created ?: return false
+        return created.plusDays(SWEEP_AGE_DAYS).isBefore(now)
+    }
+
+    fun compose(path: String, threads: List<NoteThread>, placements: Map<String, Relocation>, now: OffsetDateTime = OffsetDateTime.now()): OverviewDocument {
         val md = StringBuilder()
         val boxes = ArrayList<Remark>()
         for (thread in threads) {
@@ -37,6 +47,9 @@ object NoteComposer {
                 RelocationStatus.ORPHANED -> md.append(" ⚠ gone: the file or its side is absent")
                 RelocationStatus.UNVERIFIED -> md.append(" _(no fingerprint)_")
                 RelocationStatus.ACTIVE -> if (p.first != n.first || p.last != n.last) md.append(" (moved from ").append(n.first).append('–').append(n.last).append(')')
+            }
+            if (sweepDue(n, now) || p.status == RelocationStatus.STALE || p.status == RelocationStatus.ORPHANED) {
+                md.append(" _(gg drops it on its next start here)_")
             }
             n.rationale.takeIf { it.isNotBlank() }?.let { md.append("\n  ").append(escapeText(it.trim()).replace("\n", "\n  ")) }
             for (r in thread.replies) md.append("\n  ↳ ").append(replyLine(r))

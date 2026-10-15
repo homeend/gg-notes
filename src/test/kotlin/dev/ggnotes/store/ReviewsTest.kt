@@ -168,6 +168,24 @@ class ReviewsTest {
     }
 
     @Test
+    fun `a working review says which files moved on since it was written`() {
+        val working = reviews().single { it.record.id == "bb220002" }
+        val same = ReviewComposer.compose(working)
+        assertFalse(same.overview, same.overview.contains("tree has changed"))
+        val changed = ReviewComposer.compose(working, treeChanged = listOf("internal/x/gate.go"))
+        assertTrue(changed.overview, changed.overview.contains("tree has changed"))
+        assertTrue(changed.overview, changed.overview.contains("internal/x/gate.go"))
+        // the blob check itself: the fixture blob is synthetic, so any real bytes differ
+        assertEquals(listOf("internal/x/gate.go"), Reviews.treeChanged(working) { "package x\n".toByteArray() })
+        assertEquals("a missing file is a change when the review saw it present", listOf("internal/x/gate.go"), Reviews.treeChanged(working) { null })
+        val sawDeleted = working.copy(record = working.record.copy(files = listOf(ReviewedFile("internal/x/gate.go", null, deleted = true))))
+        assertEquals(emptyList<String>(), Reviews.treeChanged(sawDeleted) { null })
+        assertEquals(listOf("internal/x/gate.go"), Reviews.treeChanged(sawDeleted) { "back".toByteArray() })
+        val exact = working.copy(record = working.record.copy(files = listOf(ReviewedFile("internal/x/gate.go", Relocator.blobId("hello\n".toByteArray()), false))))
+        assertEquals(emptyList<String>(), Reviews.treeChanged(exact) { "hello\n".toByteArray() })
+    }
+
+    @Test
     fun `a prose review composes to its text with no remarks`() {
         val c = contents()
         val record = c.records.single { it.id == "c0ffee01" }.copy(rationale = "Plain text review.\n\nSee [a](internal/x/gate.go:2).")

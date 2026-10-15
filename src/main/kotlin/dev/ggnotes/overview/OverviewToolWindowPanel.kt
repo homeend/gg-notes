@@ -55,7 +55,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     private class GroupNode(val entry: CommitEntry, val repo: GitRepository)
     private class WorkingNode(val entry: WorkingEntry, val repo: GitRepository)
     private class OverviewNode(val overview: Overview, val repo: GitRepository, val replies: List<NoteRecord>)
-    private class ReviewNode(val review: Review, val repo: GitRepository)
+    private class ReviewNode(val review: Review, val repo: GitRepository, val treeChanged: List<String> = emptyList())
     private class FileNode(val file: FileEntry, val commit: String, val worktree: String?, val repo: GitRepository)
     private class ThreadNode(val thread: NoteThread, val commit: String, val worktree: String?, val repo: GitRepository)
     private class ReplyNode(val reply: NoteRecord)
@@ -132,7 +132,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
             for (w in repo.model.working) {
                 val wn = DefaultMutableTreeNode(WorkingNode(w, repo.repo))
                 parent.add(wn)
-                for (r in w.reviews) wn.add(DefaultMutableTreeNode(ReviewNode(r, repo.repo)))
+                for (r in w.reviews) wn.add(DefaultMutableTreeNode(ReviewNode(r, repo.repo, repo.treeChanged[r.id].orEmpty())))
                 for (f in w.files) wn.add(fileNode(f, "", w.worktree, repo.repo))
             }
         }
@@ -226,6 +226,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
                         is ReviewContent.CannotRender -> append("  " + GgNotesBundle.message("toolwindow.cannotRender"), SimpleTextAttributes.ERROR_ATTRIBUTES)
                         else -> Unit
                     }
+                    if (u.treeChanged.isNotEmpty()) append("  ⚠ " + GgNotesBundle.message("toolwindow.treeChanged"), SimpleTextAttributes.ERROR_ATTRIBUTES)
                     toolTipText = r.scope
                 }
                 is FileNode -> {

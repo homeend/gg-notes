@@ -146,6 +146,22 @@ object Reviews {
 
     fun countsText(counts: List<MetaCount>): String = counts.joinToString(" · ") { "${it.count} ${it.value}" }
 
+    /**
+     * SPEC-part2 §5.1: a working review's `files[].blob` against the working
+     * bytes now ([bytesOf] returns null for an absent file). The paths whose
+     * state differs from what the review saw — "the tree has moved on".
+     */
+    fun treeChanged(review: Review, bytesOf: (String) -> ByteArray?): List<String> =
+        review.record.files.filter { f ->
+            val bytes = bytesOf(f.path)
+            when {
+                f.deleted -> bytes != null
+                bytes == null -> true
+                f.blob.isNullOrEmpty() -> false
+                else -> !Relocator.blobId(bytes).equals(f.blob, ignoreCase = true)
+            }
+        }.map { it.path }
+
     /** Every review record of the store with its threads and scoped notes attached. */
     fun build(contents: StoreContents): List<Review> {
         val replies = contents.records.filter { it.kind == RecordKind.REPLY }.groupBy { it.parentId!! }
