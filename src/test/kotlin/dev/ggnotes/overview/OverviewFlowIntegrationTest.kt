@@ -79,7 +79,7 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         val repoOverviews = snapshot.repos.single()
         assertNull(repoOverviews.error)
         assertEquals(emptyList<String>(), repoOverviews.contents.problems)
-        val group = repoOverviews.groups.single()
+        val group = repoOverviews.model.commits.single { it.commit == sha }
         assertTrue(group.isHead)
         assertEquals("the gate", group.subject)
         val overview = group.overviews.single()
@@ -120,6 +120,120 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         // 5. closing the overview removes its overlays
         service.close()
         assertTrue(editor.inlayModel.getBlockElementsInRange(0, doc.textLength).isEmpty())
+    }
+
+    /** SPEC-part2 §5: live notes relocate against the working file, an absent side orphans, a working review notices a changed tree. */
+    fun testLiveNotesRelocateAndAWorkingReviewSeesTheTreeChange() {
+        val top = git("rev-parse", "--show-toplevel").trim()
+        val wkey = dev.ggnotes.store.StoreLocator.key(top)
+        val store = stateHome.resolve("gg").resolve("notes").resolve(dev.ggnotes.store.StoreLocator.key(git("rev-parse", "--path-format=absolute", "--git-common-dir").trim()))
+        Files.createDirectories(store.resolve("worktrees"))
+        val returnOpenHash = dev.ggnotes.store.Relocator.contextHash(listOf("return open"))
+        Files.writeString(store.resolve("worktrees/$wkey.toml"), """
+            format = 3
+
+            [[notes]]
+            id = 'bb220001'
+            source = 'user'
+            author = 'me'
+            side = 'new'
+            range = [4, 4]
+            context_hash = '$returnOpenHash'
+            summary = 'Still returns the flag.'
+            created = 2026-10-14T11:00:00Z
+            updated = 2026-10-14T11:00:00Z
+
+            [notes.address]
+            Worktree = '$top'
+            Branch = ''
+            Commit = ''
+            ShelfID = ''
+            Path = 'internal/x/gate.go'
+            State = 3
+
+            [[notes]]
+            id = 'bb220009'
+            source = 'user'
+            author = 'me'
+            side = 'new'
+            range = [1, 1]
+            context_hash = '${dev.ggnotes.store.Relocator.contextHash(listOf("package y"))}'
+            summary = 'On a file that is gone.'
+            created = 2026-10-14T11:00:00Z
+            updated = 2026-10-14T11:00:00Z
+
+            [notes.address]
+            Worktree = '$top'
+            Branch = ''
+            Commit = ''
+            ShelfID = ''
+            Path = 'internal/y/call.go'
+            State = 3
+
+            [[notes]]
+            id = 'bb220002'
+            source = 'agent'
+            author = 'ada'
+            side = 'new'
+            range = [0, 0]
+            context_hash = ''
+            summary = 'Review: working changes'
+            rationale = '{"version": 1, "summary": "## Summary\nThe uncommitted change.", "files": [{"path": "internal/x/gate.go", "annotations": [{"newRange": [4, 4], "summary": "Rename it back."}]}]}'
+            tags = ['review']
+            created = 2026-10-14T11:30:00Z
+            updated = 2026-10-14T11:30:00Z
+
+            [notes.address]
+            Worktree = '$top'
+            Branch = ''
+            Commit = ''
+            ShelfID = ''
+            Path = ''
+            State = 3
+
+            [[notes.files]]
+            path = 'internal/x/gate.go'
+            blob = '5d2a7c1e9b3f4a6d8c0e2f1a3b5c7d9e1f3a5b7c'
+        """.trimIndent())
+        // the working file moves on: two lines inserted above, and call.go removed
+        val gate = File(repoDir, "internal/x/gate.go")
+        gate.writeText("// one\n// two\n" + gate.readText())
+        File(repoDir, "internal/y/call.go").delete()
+        root.refresh(false, true)
+
+        val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)!!
+        val service = OverviewService.getInstance(project)
+        val snapshot = ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { service.refreshSync() }.get()
+        val working = snapshot.repos.single().model.working.single()
+        assertEquals(listOf("bb220002"), working.reviews.map { it.id })
+        assertEquals(listOf("internal/x/gate.go", "internal/y/call.go"), working.files.map { it.path })
+
+        // the moved note relocates to line 6 and opens the working file there
+        val gateFile = working.files.single { it.path == "internal/x/gate.go" }
+        service.openNotes(gateFile.threads, gateFile.path, "", working.worktree, repo)
+        waitFor("live notes opened") { service.open?.overview?.viewKind?.startsWith("notes:") == true }
+        val open = service.open!!
+        assertTrue(open.overview.isLive)
+        assertEquals(listOf(6 to 6), open.document!!.files.single().annotations.map { it.first to it.last })
+        assertTrue(open.document!!.overview, open.document!!.overview.contains("moved from 4"))
+        service.goToAnchor(1)
+        waitFor("working gate.go opened") { FileEditorManager.getInstance(project).selectedFiles.singleOrNull()?.name == "gate.go" }
+        val file = FileEditorManager.getInstance(project).selectedFiles.single()
+        assertTrue("a live note opens the working file itself", file.isInLocalFileSystem)
+        val editor = FileEditorManager.getInstance(project).selectedTextEditor!!
+        assertEquals(editor.document.getLineStartOffset(5), editor.selectionModel.selectionStart)
+
+        // the note on the deleted file is orphaned: listed, not placed
+        val gone = working.files.single { it.path == "internal/y/call.go" }
+        service.openNotes(gone.threads, gone.path, "", working.worktree, repo)
+        waitFor("orphaned note opened") { service.open?.overview?.id == "bb220009" }
+        assertEquals(emptyList<dev.ggnotes.store.FileRemarks>(), service.open!!.document!!.files)
+        assertTrue(service.open!!.document!!.overview.contains("gone"))
+
+        // the working review's blob no longer matches: the tree has changed
+        service.openReview(working.reviews.single(), repo)
+        waitFor("working review opened") { service.open?.overview?.id == "bb220002" }
+        assertTrue(service.open!!.document!!.overview, service.open!!.document!!.overview.contains("tree has changed"))
     }
 
     private fun waitFor(what: String, condition: () -> Boolean) {

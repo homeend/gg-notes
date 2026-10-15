@@ -37,7 +37,13 @@ object AnchorNavigator {
             }
             val root = o.repo.root
             val working = root.findFileByRelativePath(anchor.target.path)
-            val sameAsWorking = working != null && !working.isDirectory && runCatching { working.contentsToByteArray().contentEquals(committed) }.getOrDefault(false)
+            // a live document (working review, live notes) always opens the working file itself
+            val sameAsWorking = o.overview.isLive && working != null ||
+                working != null && !working.isDirectory && runCatching { working.contentsToByteArray().contentEquals(committed) }.getOrDefault(false)
+            if (o.overview.isLive && working == null) {
+                notify(project, GgNotesBundle.message("anchor.missing", anchor.target.path, GgNotesBundle.message("working.tree")))
+                return@execute
+            }
             val file: VirtualFile = if (sameAsWorking) working!! else revisionFile(project, root, o.overview.commit, anchor.target.path)
             file.putUserData(OVERVIEW_FILE_KEY, OverviewFileRef(o.overview.identity, root, o.overview.commit, anchor.target.path))
             ApplicationManager.getApplication().invokeLater({

@@ -36,6 +36,22 @@ object MarkdownRenderer {
 
     const val MAX_ANCHORS = 100
 
+    // character classes only: an alternation inside a repeated group recurses per
+    // character in java.util.regex and overflows the stack on a long prose review
+    private val INLINE_LINK = Regex("""!?\[([^\[\]]{0,2000})\]\(([^)\s]{1,2000})(\s+"[^"]*")?\)""")
+
+    /**
+     * SPEC-part2 §3.2: a review's summary (and a prose review) has NO anchors.
+     * Every inline link whose destination would be an anchor becomes
+     * `label (dest)` text before rendering; http(s) links stay links.
+     */
+    fun neutralizeAnchors(markdown: String): String = INLINE_LINK.replace(markdown) { m ->
+        when (LinkClassifier.classify(m.groupValues[2])) {
+            is LinkTarget.Anchor -> m.groupValues[1] + " (" + m.groupValues[2] + ")"
+            else -> m.value
+        }
+    }
+
     fun render(markdown: String, currentAnchor: Int? = null, missingAnchors: Set<Int> = emptySet()): RenderedDocument {
         val flavour = GFMFlavourDescriptor()
         val tree = MarkdownParser(flavour).buildMarkdownTreeFromString(markdown)
