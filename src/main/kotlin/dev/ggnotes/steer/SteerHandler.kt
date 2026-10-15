@@ -17,12 +17,18 @@ import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.vcs.log.impl.VcsLogNavigationUtil.jumpToHash
 import dev.ggnotes.git.GitAccess
+import dev.ggnotes.overview.OverviewService
 import dev.ggnotes.overview.RevisionFiles
+import dev.ggnotes.store.DocumentResult
+import dev.ggnotes.store.Overview
+import dev.ggnotes.store.OverviewDocument
 import dev.ggnotes.store.StoreLocator
 import java.awt.Color
 import java.awt.Graphics
 import java.awt.Rectangle
+import java.nio.file.Files
 import java.nio.file.Path
+import java.time.OffsetDateTime
 
 /**
  * PLUGIN.md §4: one `gg session` command → one reply. Runs on the steer
@@ -45,6 +51,11 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             "note_list" -> noteList(s, c)
             "note_show" -> noteShow(s, c)
             "note_rm" -> noteRm(s, c)
+            "overview_add" -> overviewAdd(s, c)
+            "overview_set" -> overviewSet(s, c)
+            "overview_list" -> overviewList(s, c)
+            "overview_show" -> overviewShow(s, c)
+            "overview_rm" -> overviewRm(s, c)
             "focus", "reload", "serve" -> Reply.fail(c.id, "${c.cmd} is a gg TUI command")
             else -> Reply.fail(c.id, "unknown command ${c.cmd}")
         }
@@ -232,7 +243,10 @@ class SteerHandler(private val project: Project, private val service: SteerServi
     fun openFilesWire(s: SteerService.RootSession): List<OpenFileWire> {
         val fem = FileEditorManager.getInstance(project)
         val selected = fem.selectedFiles.firstOrNull()
-        val shownId = s.memory.openFiles().firstOrNull { s.files[it.id] == selected }?.id
+        val openOverview = OverviewService.getInstance(project).open?.overview
+        val shownId = s.memory.openFiles().firstOrNull { f ->
+            if (f.source == "overview") openOverview?.viewKind == "session:${f.id}:" else s.files[f.id] == selected
+        }?.id
         return s.memory.openFiles().map { f ->
             s.memory.wire(f, shownId,
                 caretLine = { entry ->
@@ -248,6 +262,11 @@ class SteerHandler(private val project: Project, private val service: SteerServi
         val name = c.fileId?.takeIf { it.isNotEmpty() } ?: c.file?.takeIf { it.isNotEmpty() } ?: return Reply.fail(c.id, "file_focus needs a file")
         val entry = (if (!c.fileId.isNullOrEmpty()) s.memory.findFile(c.fileId) else s.memory.findFileByPath(name))
             ?: return Reply.fail(c.id, "no open file $name")
+        if (entry.source == "overview") {
+            val o = s.memory.findOverview(entry.id) ?: return Reply.fail(c.id, "no open file $name")
+            show(s, o, keepAnchor = true)
+            return Reply.ok(c.id, "focused ${o.title}")
+        }
         val vf = s.files[entry.id] ?: return Reply.fail(c.id, "no open file $name")
         s.memory.touchFile(entry.source, entry.path, entry.rev)
         var detail = ""
@@ -339,6 +358,92 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             reply = Reply.ok(c.id, "opened ${entry.path}:${target.start} at line ${target.start}")
         }
         return reply ?: Reply.fail(c.id, none)
+    }
+
+    // ---- overviews ----------------------------------------------------------------------
+
+    /** A file anchor resolves when the path is in the worktree and its end line is within the file. */
+    private fun resolver(s: SteerService.RootSession) = SessionAnchors.Resolver { path, end ->
+        val f = Path.of(s.repo.root.path, path)
+        if (!Files.isRegularFile(f)) return@Resolver false
+        if (end == null) return@Resolver true
+        val bytes = runCatching { Files.readAllBytes(f) }.getOrNull() ?: return@Resolver false
+        end <= Lines.split(String(bytes, Charsets.UTF_8)).size
+    }
+
+    /** The session overview as the overview viewer shows it: live anchors into the worktree, note anchors rewritten. */
+    private fun asOverview(s: SteerService.RootSession, o: SessionMemory.Overview): Overview {
+        val md = s.memory.viewerMarkdown(o)
+        return Overview(
+            id = o.id, title = o.title, author = "agent", commit = "", branch = "", preview = null, prNumber = null,
+            created = null, updated = OffsetDateTime.now(),
+            document = DocumentResult.Ok(OverviewDocument(o.title, md.ifBlank { "_(empty)_" }, emptyList())),
+            sourceFile = s.inbox, viewKind = "session:${o.id}:", liveWorktree = s.topLevel,
+        )
+    }
+
+    private fun isShown(s: SteerService.RootSession, o: SessionMemory.Overview): Boolean =
+        OverviewService.getInstance(project).open?.overview?.identity == asOverview(s, o).identity
+
+    private fun show(s: SteerService.RootSession, o: SessionMemory.Overview, keepAnchor: Boolean) {
+        val overview = asOverview(s, o)
+        onEdt {
+            val service = OverviewService.getInstance(project)
+            if (keepAnchor) service.openKeepingAnchor(overview, s.repo) else service.open(overview, s.repo)
+            com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(OverviewService.TOOL_WINDOW_ID)?.show()
+        }
+        s.memory.touchFile("overview", "overview-${o.id.substring(1)}.md", null, title = o.title)
+    }
+
+    private fun overviewAdd(s: SteerService.RootSession, c: Command): Reply {
+        val o = when (val r = s.memory.addOverview(c.title, c.text, resolver(s))) {
+            is OverviewResult.Refused -> return Reply.fail(c.id, r.error)
+            is OverviewResult.Ok -> r.overview
+        }
+        if (c.background) return Reply.ok(c.id, "added ${o.id} in the background").withUnresolved(o)
+        show(s, o, keepAnchor = false)
+        return Reply.ok(c.id, "showing ${o.id}").withUnresolved(o)
+    }
+
+    private fun Reply.withUnresolved(o: SessionMemory.Overview): Reply =
+        if (o.unresolved.isEmpty()) this else copy(detail = (detail ?: "") + o.unresolved.joinToString("") { "\nunresolved: $it" })
+
+    private fun overviewSet(s: SteerService.RootSession, c: Command): Reply {
+        val id = c.fileId?.takeIf { it.isNotEmpty() } ?: return Reply.fail(c.id, "no overview ")
+        val o = when (val r = s.memory.setOverview(id, c.title, c.text, resolver(s))) {
+            is OverviewResult.Refused -> return Reply.fail(c.id, r.error)
+            is OverviewResult.Ok -> r.overview
+        }
+        return if (isShown(s, o)) {
+            show(s, o, keepAnchor = true)
+            Reply.ok(c.id, "showing ${o.id}").withUnresolved(o)
+        } else {
+            Reply.ok(c.id, o.id).withUnresolved(o)
+        }
+    }
+
+    private fun overviewList(s: SteerService.RootSession, c: Command): Reply {
+        val resolver = resolver(s)
+        val wire = s.memory.overviews().map { o ->
+            s.memory.refreshUnresolved(o, resolver)
+            s.memory.overviewWire(o, shown = isShown(s, o), withText = false)
+        }
+        return Reply.ok(c.id, "${wire.size} overviews").copy(overviews = wire)
+    }
+
+    private fun overviewShow(s: SteerService.RootSession, c: Command): Reply {
+        val id = c.fileId.orEmpty()
+        val o = s.memory.findOverview(id) ?: return Reply.fail(c.id, "no overview $id")
+        return Reply.ok(c.id, o.id).copy(overviews = listOf(s.memory.overviewWire(o, shown = isShown(s, o), withText = true)))
+    }
+
+    private fun overviewRm(s: SteerService.RootSession, c: Command): Reply {
+        val id = c.fileId.orEmpty()
+        val o = s.memory.findOverview(id) ?: return Reply.fail(c.id, "no overview $id")
+        val shown = isShown(s, o)
+        s.memory.removeOverview(id)
+        if (shown) onEdt { OverviewService.getInstance(project).close() }
+        return Reply.ok(c.id, "closed $id")
     }
 
     // ---- helpers -------------------------------------------------------------------------

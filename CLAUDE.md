@@ -48,6 +48,30 @@ upload.
   sha256(`T:\others\test-1\.git`)[:8] under `%LocalAppData%\gg\notes`;
   `StoreLocatorTest` pins it. The old `gg.exe` in test-1 (v0.3.0) has no
   `overview store` verb and its 12 Windows stores are gg's own test repos.
+- Steering (`docs/gg-steer/`): `dev.ggnotes.steer` is the `gg session …
+  --to ide` target. Pure and unit-tested: `SteerPaths` (gg's EncodeRepoKey
+  inbox path), `Wire` (command/reply JSON), `Inbox` + `Presence` (drain
+  rules, replies, sweep, ide.json), `Lines` (gg's line rule and landed
+  prose), `Reanchor` (gg's agentdocs rule over a Myers line diff),
+  `SessionMemory` (open files f<n>, notes t<n>, overviews) and
+  `SessionAnchors` (the grammar plus `note:t<n>`). IDE: `SteerService`
+  (presence per git root from the startup activity, 1 s touch, 500 ms
+  drain + watcher, one worker thread, replies only on `wait`),
+  `SteerHandler` (verb by verb, PLUGIN.md §4), `TempNotes` (boxes via
+  `RemarkOverlay.box`, debounced re-anchoring). A session overview opens
+  through `OverviewService` with `viewKind = session:f<n>:` and
+  `liveWorktree`; `openKeepingAnchor` is `overview_set`'s in-place path.
+- `SteerService.start()` is a no-op in unit-test mode: tests publish
+  presence only via `startSync()` under a temp `XDG_STATE_HOME` set BEFORE
+  `super.setUp()`, so the suite never writes into the live state dir.
+  Close every editor before `super.tearDown()` in tests that open the
+  git index file (`GitIndexVirtualFile`): git4idea disposes that file
+  system before the framework closes editors and an assertion fires.
+- To drive the plugin by hand: find the inbox under
+  `~/.local/state/gg/sessions/<Enc(common)>/steer/<Enc(worktree)>/`, check
+  `ide.json`, then `mv` a JSON command into `ide/cmd-<id>.json` and read
+  `ide/reply-<id>.json` (PLUGIN.md §7). gg's own `--to ide` is on
+  gigagit's `feat/steer-ide` branch and was not built when this landed.
 - Regex rule: never put an alternation inside a repeated group
   (`(?:a|b)*`) over user text — java.util.regex recurses per character and
   a 6 KB prose review overflowed the stack. Character classes only.

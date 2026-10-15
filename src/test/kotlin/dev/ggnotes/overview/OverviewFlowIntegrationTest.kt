@@ -224,6 +224,49 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         assertEquals("no note t1", post("3-11", """{"id":"3-11","cmd":"note_rm","note_id":"t1","wait":true}""").get("error").asString)
         assertEquals("no notes", post("3-12", """{"id":"3-12","cmd":"note_list","wait":true}""").get("detail").asString)
         waitFor("box removed") { gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).isEmpty() }
+
+        // step 4: in-memory overviews in the overview tool window, with note anchors and unresolved destinations
+        val noted = post("4-0", """{"id":"4-0","cmd":"note_add","file":"internal/x/gate.go","start":5,"end":5,"summary":"the gate","wait":true}""")
+        val noteId = noted.getAsJsonArray("notes")[0].asJsonObject.get("id").asString
+        val tour = "# Tour\n\nStart at [the gate](internal/x/gate.go:5), then [the note](note:$noteId); [gone](internal/nope.go:3) is missing."
+        val addedOv = post("4-1", com.google.gson.JsonObject().apply { addProperty("id", "4-1"); addProperty("cmd", "overview_add"); addProperty("title", "Tour"); addProperty("text", tour); addProperty("wait", true) }.toString())
+        val ovId = Regex("showing (f\\d+)").find(addedOv.get("detail").asString)!!.groupValues[1]
+        assertTrue(addedOv.get("detail").asString, addedOv.get("detail").asString.contains("unresolved: internal/nope.go:3"))
+        val overviewService = OverviewService.getInstance(project)
+        waitFor("tour shown in the tool window") { overviewService.open?.overview?.viewKind == "session:$ovId:" }
+        val shownDoc = overviewService.open!!
+        assertEquals("Tour", shownDoc.overview.title)
+        assertEquals("the note anchor points at the note's lines; the unresolved one is text", 2, shownDoc.anchors.size)
+        assertEquals(dev.ggnotes.store.LinkTarget.Anchor("internal/x/gate.go", 5, 5), shownDoc.anchors[1].target)
+        assertEquals("the note", shownDoc.anchors[1].label)
+        val listedOv = post("4-2", """{"id":"4-2","cmd":"overview_list","wait":true}""")
+        assertEquals("1 overviews", listedOv.get("detail").asString)
+        val row = listedOv.getAsJsonArray("overviews")[0].asJsonObject
+        assertEquals(ovId, row.get("id").asString)
+        assertEquals("shown", row.get("state").asString)
+        assertEquals(3, row.get("anchors").asInt)
+        assertEquals(listOf("internal/nope.go:3"), row.getAsJsonArray("unresolved").map { it.asString })
+        assertEquals(tour, post("4-3", """{"id":"4-3","cmd":"overview_show","file_id":"$ovId","wait":true}""").getAsJsonArray("overviews")[0].asJsonObject.get("text").asString)
+
+        // the walk stays on its anchor across overview_set
+        ApplicationManager.getApplication().invokeAndWait { overviewService.goToAnchor(2, openFile = false) }
+        val setOv = post("4-4", com.google.gson.JsonObject().apply { addProperty("id", "4-4"); addProperty("cmd", "overview_set"); addProperty("file_id", ovId); addProperty("text", "$tour\n\nAnd [more](internal/x/gate.go:1)."); addProperty("wait", true) }.toString())
+        assertEquals("showing $ovId", setOv.get("detail").asString.lines().first())
+        waitFor("re-rendered with three anchors") { overviewService.open?.anchors?.size == 3 }
+        assertEquals(2, overviewService.open!!.currentAnchor)
+        assertEquals("an overview needs text", post("4-5", """{"id":"4-5","cmd":"overview_set","file_id":"$ovId","text":" ","wait":true}""").get("error").asString)
+        assertEquals("no overview f99", post("4-6", """{"id":"4-6","cmd":"overview_show","file_id":"f99","wait":true}""").get("error").asString)
+        val filesWithOv = post("4-7", """{"id":"4-7","cmd":"files","wait":true}""").getAsJsonArray("files").map { it.asJsonObject }
+        val ovEntry = filesWithOv.single { it.get("id").asString == ovId }
+        assertEquals("overview", ovEntry.get("source").asString)
+        assertEquals("Tour", ovEntry.get("title").asString)
+        assertEquals("shown", ovEntry.get("state").asString)
+        assertEquals("focused Tour", post("4-8", """{"id":"4-8","cmd":"file_focus","file_id":"$ovId","wait":true}""").get("detail").asString)
+        assertEquals("added", Regex("added (f\\d+) in the background").find(post("4-9", """{"id":"4-9","cmd":"overview_add","title":"Quiet","text":"nothing","background":true,"wait":true}""").get("detail").asString)!!.groupValues[0].substring(0, 5))
+        assertEquals("closed $ovId", post("4-10", """{"id":"4-10","cmd":"overview_rm","file_id":"$ovId","wait":true}""").get("detail").asString)
+        assertNull(overviewService.open)
+        assertEquals("no overview $ovId", post("4-11", """{"id":"4-11","cmd":"overview_rm","file_id":"$ovId","wait":true}""").get("error").asString)
+        assertEquals("1 overviews", post("4-12", """{"id":"4-12","cmd":"overview_list","wait":true}""").get("detail").asString)
     }
 
     fun testOverviewIsListedOpenedAndItsAnchorOpensTheCommittedFile() {

@@ -9,6 +9,12 @@ sealed class NoteResult {
     data class Refused(val error: String) : NoteResult()
 }
 
+/** `overview_add` / `overview_set`'s outcome. */
+sealed class OverviewResult {
+    data class Ok(val overview: SessionMemory.Overview) : OverviewResult()
+    data class Refused(val error: String) : OverviewResult()
+}
+
 /**
  * PLUGIN.md §5: what the agent opened in one git root — open files `f<n>`
  * and temporary notes `t<n>` with gg's exact-line re-anchoring. Pure; the
@@ -20,7 +26,13 @@ class SessionMemory(val root: String) {
         const val MAX_NOTES_PER_FILE = 50
         const val MAX_NOTE_SUMMARY = 500
         const val MAX_NOTE_RATIONALE = 4000
+        const val MAX_OVERVIEW_BYTES = 64 * 1024
+        const val MAX_OVERVIEWS_PER_ROOT = 20
+        const val MAX_OVERVIEW_TITLE = 200
     }
+
+    /** An in-memory overview: an open file of source `overview` (SPEC §5). */
+    class Overview(val id: String, var title: String, var text: String, var anchors: List<SessionAnchor>, var unresolved: List<String>)
 
     /** One entry of the open-files list. */
     class OpenFile(
@@ -91,6 +103,7 @@ class SessionMemory(val root: String) {
     private var clock = 0L
     private val files = LinkedHashMap<String, OpenFile>()
     private val notesByFile = HashMap<String, FileNotes>()
+    private val overviews = LinkedHashMap<String, Overview>()
 
     private fun key(source: String, path: String, rev: String?) = "$source\u0000$path\u0000${rev.orEmpty()}"
 
@@ -115,6 +128,7 @@ class SessionMemory(val root: String) {
     fun removeFile(id: String) = synchronized(lock) {
         files.entries.removeIf { it.value.id == id }
         notesByFile.remove(id)
+        overviews.remove(id)
         Unit
     }
 
@@ -207,4 +221,75 @@ class SessionMemory(val root: String) {
         rationale = n.rationale, author = n.author, outdated = n.outdated,
         text = if (withText) noteText(n.id) else null, meta = n.meta, display = n.display,
     )
+
+    // ---- overviews -------------------------------------------------------------------------
+
+    /** gg's `overviewRefusal`, in order; null when fine. */
+    private fun overviewRefusal(title: String?, text: String?, needTitle: Boolean): String? {
+        val t = text.orEmpty()
+        if (t.isBlank()) return "an overview needs text"
+        if (t.toByteArray(Charsets.UTF_8).size > MAX_OVERVIEW_BYTES) return "the text is over 64 KiB"
+        val ti = title.orEmpty().trim()
+        if (needTitle && ti.isEmpty()) return "an overview needs a title"
+        if (ti.isNotEmpty() && ('\n' in ti || '\r' in ti || ti.codePointCount(0, ti.length) > MAX_OVERVIEW_TITLE)) {
+            return "the title must be one line of at most $MAX_OVERVIEW_TITLE characters"
+        }
+        return null
+    }
+
+    private fun resolve(anchors: List<SessionAnchor>, resolver: SessionAnchors.Resolver): List<String> = anchors
+        .filter { a -> if (a.note != null) findNote(a.note) == null else !resolver.resolves(a.path!!, a.end) }
+        .map { it.dest }
+
+    /** `overview_add`: a new open file of source `overview` with the text's anchors (SPEC §5). */
+    fun addOverview(title: String?, text: String?, resolver: SessionAnchors.Resolver): OverviewResult = synchronized(lock) {
+        overviewRefusal(title, text, needTitle = true)?.let { return OverviewResult.Refused(it) }
+        if (overviews.size >= MAX_OVERVIEWS_PER_ROOT) return OverviewResult.Refused("$MAX_OVERVIEWS_PER_ROOT overviews are open; remove one first")
+        val id = "f${++fileSeq}"
+        val t = title!!.trim()
+        val f = OpenFile(id, "overview-${id.substring(1)}.md", "overview", null, t)
+        f.lastShown = ++clock
+        files["overview\u0000$id"] = f
+        val anchors = SessionAnchors.extract(text!!)
+        val o = Overview(id, t, text, anchors, resolve(anchors, resolver))
+        overviews[id] = o
+        OverviewResult.Ok(o)
+    }
+
+    /** `overview_set`: replace title and/or text in place; the id (and the walk) stay. */
+    fun setOverview(id: String, title: String?, text: String?, resolver: SessionAnchors.Resolver): OverviewResult = synchronized(lock) {
+        val o = overviews[id] ?: return OverviewResult.Refused("no overview $id")
+        val newText = text ?: o.text
+        val newTitle = title?.trim()?.takeIf { it.isNotEmpty() } ?: o.title
+        overviewRefusal(newTitle, newText, needTitle = false)?.let { return OverviewResult.Refused(it) }
+        o.title = newTitle
+        o.text = newText
+        o.anchors = SessionAnchors.extract(newText)
+        o.unresolved = resolve(o.anchors, resolver)
+        files.values.firstOrNull { it.id == id }?.title = newTitle
+        OverviewResult.Ok(o)
+    }
+
+    fun removeOverview(id: String): Boolean = synchronized(lock) {
+        if (overviews.remove(id) == null) return false
+        files.entries.removeIf { it.value.id == id }
+        true
+    }
+
+    fun findOverview(id: String): Overview? = synchronized(lock) { overviews[id] }
+
+    fun overviews(): List<Overview> = synchronized(lock) { overviews.values.toList() }
+
+    /** Re-check an overview's anchors (a note may have gone, a file appeared). */
+    fun refreshUnresolved(o: Overview, resolver: SessionAnchors.Resolver) = synchronized(lock) {
+        o.unresolved = resolve(o.anchors, resolver)
+    }
+
+    fun overviewWire(o: Overview, shown: Boolean, withText: Boolean): OverviewWire =
+        OverviewWire(o.id, o.title, if (shown) "shown" else "background", o.anchors.size, o.unresolved.takeIf { it.isNotEmpty() }, if (withText) o.text else null)
+
+    /** The markdown the viewer renders: note anchors point at the note's lines now, unresolved ones are text. */
+    fun viewerMarkdown(o: Overview): String = synchronized(lock) {
+        SessionAnchors.rewrite(o.text, o.unresolved.toSet()) { noteId -> findNote(noteId)?.let { span(it) } }
+    }
 }
