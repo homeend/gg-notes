@@ -79,7 +79,7 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         val repoOverviews = snapshot.repos.single()
         assertNull(repoOverviews.error)
         assertEquals(emptyList<String>(), repoOverviews.contents.problems)
-        val group = repoOverviews.groups.single()
+        val group = repoOverviews.model.commits.single { it.commit == sha }
         assertTrue(group.isHead)
         assertEquals("the gate", group.subject)
         val overview = group.overviews.single()

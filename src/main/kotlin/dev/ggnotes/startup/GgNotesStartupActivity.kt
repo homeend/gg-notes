@@ -31,9 +31,9 @@ class GgNotesStartupActivity : ProjectActivity {
     private fun demo(project: Project, service: OverviewService) {
         val done = AtomicBoolean(false)
         service.addSnapshotListener(service) {
-            val repo = service.snapshot.repos.firstOrNull { it.groups.isNotEmpty() } ?: return@addSnapshotListener
+            val repo = service.snapshot.repos.firstOrNull { r -> r.model.commits.any { it.overviews.isNotEmpty() } } ?: return@addSnapshotListener
             if (!done.compareAndSet(false, true)) return@addSnapshotListener
-            val overview = repo.groups.first().overviews.first()
+            val overview = repo.model.commits.first { it.overviews.isNotEmpty() }.overviews.first()
             LOG.info("GgNotes demo: opening '${overview.title}'")
             val tw = ToolWindowManager.getInstance(project).getToolWindow(OverviewService.TOOL_WINDOW_ID) ?: return@addSnapshotListener
             tw.activate({

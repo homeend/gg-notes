@@ -51,6 +51,17 @@ object GitAccess {
         return result.output.firstOrNull()?.trim() ?: ""
     }
 
+    /** The index's copy of a path (`git show :<path>`); null when the path is not staged. */
+    fun indexContent(project: Project, root: VirtualFile, path: String): ByteArray? {
+        assertBackground()
+        return try {
+            GitFileUtils.getFileContent(project, root, "", path)
+        } catch (e: Exception) {
+            LOG.debug("GgNotes: no $path in the index: ${e.message}")
+            null
+        }
+    }
+
     /** `git show <sha>:<path>` as bytes; null when the path is not at the commit. */
     fun fileContent(project: Project, root: VirtualFile, sha: String, path: String): ByteArray? {
         assertBackground()

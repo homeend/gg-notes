@@ -37,11 +37,22 @@ data class Overview(
     val document: DocumentResult,
     /** The part the record came from (`commits.toml` / `previews.toml`). */
     val sourceFile: Path,
+    /**
+     * Empty for a real overview. A review or a note thread shown through the
+     * overview viewer sets it (e.g. `review:<id>`) so its identity never
+     * collides with an overview's (commit, title) and anchors of a live
+     * document resolve against the working tree instead of the commit.
+     */
+    val viewKind: String = "",
+    /** Set when the document's files are the WORKING TREE of this worktree, not the commit. */
+    val liveWorktree: String? = null,
 ) {
     val shortSha: String get() = commit.take(7)
 
-    /** SPEC §4.4: (commit or PR scope, title) names one overview. */
-    val identity: String get() = (prNumber?.let { "pr:$it" } ?: commit) + "\u0000" + title.trim()
+    /** SPEC §4.4: (commit or PR scope, title) names one overview; other view kinds key on their record. */
+    val identity: String get() = viewKind + (prNumber?.let { "pr:$it" } ?: commit) + "\u0000" + title.trim()
+
+    val isLive: Boolean get() = liveWorktree != null
 }
 
 /** Everything a reader found in one store directory. */

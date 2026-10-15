@@ -12,15 +12,21 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.EditorNotifications
 import com.intellij.util.concurrency.AppExecutorUtil
 import dev.ggnotes.git.GitAccess
-import dev.ggnotes.store.CommitGroup
 import dev.ggnotes.store.DocumentResult
+import dev.ggnotes.store.FileState
 import dev.ggnotes.store.MarkdownRenderer
+import dev.ggnotes.store.NoteComposer
+import dev.ggnotes.store.NoteThread
+import dev.ggnotes.store.Relocator
 import dev.ggnotes.store.Overview
-import dev.ggnotes.store.OverviewGrouping
 import dev.ggnotes.store.RenderedAnchor
 import dev.ggnotes.store.RenderedDocument
+import dev.ggnotes.store.RepoModel
+import dev.ggnotes.store.Review
+import dev.ggnotes.store.ReviewComposer
 import dev.ggnotes.store.StoreContents
 import dev.ggnotes.store.StoreLocator
+import dev.ggnotes.store.StoreModel
 import dev.ggnotes.store.StoreReader
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
@@ -33,7 +39,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** A file opened from an overview: which overview, which commit, which repo-relative path. */
+/** A file opened from an overview: which overview, which commit (empty for a live file), which repo-relative path. */
 data class OverviewFileRef(val overviewIdentity: String, val root: VirtualFile, val commit: String, val path: String)
 
 /** Set on every virtual file the plugin opens from an anchor; the banner and the overlays key on it. */
@@ -45,7 +51,7 @@ class RepoOverviews(
     val storeDir: Path?,
     val contents: StoreContents,
     val headSha: String?,
-    val groups: List<CommitGroup>,
+    val model: RepoModel,
     /** A problem resolving the store (git failed), shown as a row. */
     val error: String?,
 )
@@ -57,21 +63,21 @@ class Snapshot(val repos: List<RepoOverviews>) {
     }
 }
 
-/** The overview the user has open: its rendering, anchor state and the editor overlays bound to it. */
+/** The document the user has open (an overview, a review or a note thread): its rendering, anchor state and overlays. */
 class OpenOverview(val overview: Overview, val repo: GitRepository, rendered: RenderedDocument) : Disposable {
     @Volatile var rendered: RenderedDocument = rendered
     @Volatile var currentAnchor: Int? = null
     /** Anchors whose file or lines are not at the commit (SPEC §6), known after [resolved]. */
     @Volatile var missing: Set<Int> = emptySet()
     @Volatile var resolved: Boolean = false
-    /** `git show <commit>:<path>` per path, null = not at the commit. */
+    /** The side's content per path (`git show <commit>:<path>`, or the working file), null = absent. */
     val contents = ConcurrentHashMap<String, java.util.Optional<ByteArray>>()
     val anchors: List<RenderedAnchor> get() = rendered.anchors
     val document get() = (overview.document as? DocumentResult.Ok)?.document
     override fun dispose() = Unit
 }
 
-/** What the tool window panel offers the service: showing an overview and scrolling to an anchor. */
+/** What the tool window panel offers the service: showing a document and scrolling to an anchor. */
 interface OverviewUi {
     fun showOverview(open: OpenOverview?)
     fun showAnchor(n: Int)
@@ -80,7 +86,7 @@ interface OverviewUi {
 /**
  * Project service: resolves each repository's store (SPEC §3), reads it,
  * re-reads on change (polling the directory — files are replaced by rename,
- * SPEC §8.1), and holds the open overview with its anchor navigation.
+ * SPEC §8.1), and holds the open document with its anchor navigation.
  */
 @Service(Service.Level.PROJECT)
 class OverviewService(private val project: Project) : Disposable {
@@ -129,7 +135,7 @@ class OverviewService(private val project: Project) : Disposable {
                 val snap = computeSnapshot()
                 snapshot = snap
                 LOG.info("GgNotes: " + snap.repos.joinToString("; ") { r ->
-                    "${r.repo.root.name}: ${r.contents.overviews.size} overview(s) in ${r.storeDir ?: "<no store>"}" +
+                    "${r.repo.root.name}: ${r.contents.overviews.size} overview(s), ${r.contents.records.size} record(s) in ${r.storeDir ?: "<no store>"}" +
                         (r.error?.let { " ($it)" } ?: "") + (if (r.contents.problems.isEmpty()) "" else " problems=${r.contents.problems}")
                 }.ifEmpty { "no git repositories" })
                 invokeLater { snapshotListeners.forEach { it() } }
@@ -158,24 +164,50 @@ class OverviewService(private val project: Project) : Disposable {
             heads[repo.root.path] = head
             val common = GitAccess.commonDir(project, repo.root)
             if (common == null) {
-                RepoOverviews(repo, null, StoreContents.EMPTY, head, emptyList(), "git rev-parse failed in ${repo.root.name}")
+                RepoOverviews(repo, null, StoreContents.EMPTY, head, RepoModel.EMPTY, "git rev-parse failed in ${repo.root.name}")
             } else {
                 val dir = StoreLocator.storeDir(StoreLocator.defaultBaseDir(), StoreLocator.key(common))
-                for (name in StoreReader.PARTS) {
-                    val f = dir.resolve(name)
-                    sig[f] = fileSignature(f)
-                }
+                for (f in watchedFiles(dir)) sig[f] = fileSignature(f)
                 val contents = reader.read(dir)
+                val commits = LinkedHashSet<String>()
+                contents.records.forEach { if (it.address.commit.isNotEmpty()) commits += it.address.commit }
                 val subjectMap = HashMap<String, String?>()
-                for (sha in contents.overviews.map { it.commit }.distinct()) {
-                    subjectMap[sha] = subjectOf(repo.root, sha)
+                for (sha in commits) subjectMap[sha] = subjectOf(repo.root, sha)
+                val model = StoreModel.build(contents, head, subjectMap).let { m ->
+                    // live records belong to the checkout gg wrote them in: keep the ones naming this root
+                    m.copy(working = m.working.filter { sameCheckout(it.worktree, repo.root) })
                 }
-                RepoOverviews(repo, dir, contents, head, OverviewGrouping.group(contents.overviews, head, subjectMap), null)
+                RepoOverviews(repo, dir, contents, head, model, null)
             }
         }
         signature = sig
         headSignature = heads
         return Snapshot(result)
+    }
+
+    /** SPEC-part2 §5.1: the record's `Worktree` must name the checkout shown; compare cleaned, real paths. */
+    private fun sameCheckout(worktree: String, root: VirtualFile): Boolean {
+        val windows = StoreLocator.isWindows()
+        fun norm(p: String): String {
+            val cleaned = StoreLocator.clean(p, windows)
+            return if (windows || System.getProperty("os.name").orEmpty().lowercase().contains("mac")) cleaned.lowercase() else cleaned
+        }
+        val candidates = HashSet<String>()
+        candidates += norm(root.path)
+        runCatching { candidates += norm(Path.of(root.path).toRealPath().toString()) }
+        val wt = norm(worktree)
+        if (wt in candidates) return true
+        return runCatching { norm(Path.of(worktree).toRealPath().toString()) in candidates }.getOrDefault(false)
+    }
+
+    /** The files whose change must trigger a re-read: the parts and every worktree part (SPEC §8.1). */
+    private fun watchedFiles(dir: Path): List<Path> {
+        val out = ArrayList<Path>()
+        for (name in StoreReader.PARTS) out.add(dir.resolve(name))
+        val wt = dir.resolve(StoreReader.WORKTREES_DIR)
+        out.add(wt)
+        if (Files.isDirectory(wt)) runCatching { Files.list(wt).use { s -> s.forEach { out.add(it) } } }
+        return out
     }
 
     private fun subjectOf(root: VirtualFile, sha: String): String? {
@@ -188,7 +220,11 @@ class OverviewService(private val project: Project) : Disposable {
     }
 
     private fun fileSignature(f: Path): Pair<Long, Long> = try {
-        if (Files.isRegularFile(f)) Files.getLastModifiedTime(f).toMillis() to Files.size(f) else -1L to -1L
+        when {
+            Files.isRegularFile(f) -> Files.getLastModifiedTime(f).toMillis() to Files.size(f)
+            Files.isDirectory(f) -> Files.getLastModifiedTime(f).toMillis() to Files.list(f).use { it.count() }
+            else -> -1L to -1L
+        }
     } catch (e: Exception) {
         -1L to -1L
     }
@@ -203,7 +239,7 @@ class OverviewService(private val project: Project) : Disposable {
         if (changed) refresh()
     }
 
-    // ---- the open overview -----------------------------------------------------------------
+    // ---- the open document -----------------------------------------------------------------
 
     /** Open (select) an overview: render it, then resolve its anchors against the commit in the background. */
     fun open(overview: Overview, repo: GitRepository) {
@@ -222,6 +258,55 @@ class OverviewService(private val project: Project) : Disposable {
         ui?.showOverview(o)
         EditorNotifications.getInstance(project).updateAllNotifications()
         if (doc != null) resolveAnchors(o)
+    }
+
+    /** A review through the overview viewer: new-side remarks are anchors and boxes, old-side ones are listed. */
+    fun openReview(review: Review, repo: GitRepository) {
+        val r = review.record
+        open(Overview(
+            id = r.id, title = review.title, author = r.author, commit = r.address.commit, branch = r.address.branch,
+            preview = r.preview, prNumber = r.prNumber, created = r.created, updated = r.updated,
+            document = DocumentResult.Ok(ReviewComposer.compose(review)), sourceFile = r.sourceFile,
+            viewKind = "review:${r.id}:", liveWorktree = r.address.worktree.takeIf { r.isLive },
+        ), repo)
+    }
+
+    /**
+     * The note threads of one file (SPEC-part2 §8): the side's text is read in the
+     * background (the file at the commit, the working file, or the index copy for a
+     * staged note), each note is verified or relocated (§4.3 / §5.2), and the
+     * threads open as a document whose anchors are the notes at their lines.
+     */
+    fun openNotes(threads: List<NoteThread>, path: String, commit: String, worktree: String?, repo: GitRepository) {
+        if (threads.isEmpty()) return
+        AppExecutorUtil.getAppExecutorService().execute {
+            val live = worktree != null
+            val sides = HashMap<Int, java.util.Optional<List<String>>>()
+            fun sideLines(state: Int): List<String>? = sides.getOrPut(state) {
+                val bytes: ByteArray? = when {
+                    !live -> GitAccess.fileContent(project, repo.root, commit, path)
+                    state == FileState.STAGED -> GitAccess.indexContent(project, repo.root, path)
+                    else -> Path.of(repo.root.path, path).let { f -> if (Files.isRegularFile(f)) runCatching { Files.readAllBytes(f) }.getOrNull() else null }
+                }
+                java.util.Optional.ofNullable(bytes?.let { Relocator.lines(it) })
+            }.orElse(null)
+            val placements = threads.associate { t ->
+                val n = t.root
+                val lines = if (n.side == "old") null else sideLines(n.address.state)
+                n.id to if (live) Relocator.relocate(lines, n.first, n.last, n.contextHash)
+                else Relocator.verifyCommitted(lines, n.first, n.last, n.contextHash)
+            }
+            val doc = NoteComposer.compose(path, threads, placements)
+            val first = threads.first().root
+            val ids = threads.joinToString(",") { it.root.id }
+            val overview = Overview(
+                id = ids, title = doc.title, author = first.author, commit = commit, branch = "", preview = null, prNumber = null,
+                created = first.created, updated = threads.mapNotNull { it.newest }.maxOrNull(),
+                document = DocumentResult.Ok(doc), sourceFile = first.sourceFile,
+                viewKind = "notes:$ids:", liveWorktree = worktree,
+            )
+            invokeLater { open(overview, repo) }
+        }
     }
 
     fun close() {
@@ -252,10 +337,15 @@ class OverviewService(private val project: Project) : Disposable {
         }
     }
 
-    /** Cached `git show`; null when the path is not at the commit. Background only. */
+    /** Cached content of the document's side: the file at the commit, or the working file for a live document. Background only. */
     fun contentOf(o: OpenOverview, path: String): ByteArray? {
         o.contents[path]?.let { return it.orElse(null) }
-        val bytes = GitAccess.fileContent(project, o.repo.root, o.overview.commit, path)
+        val bytes = if (o.overview.isLive) {
+            val f = Path.of(o.repo.root.path, path)
+            if (Files.isRegularFile(f)) runCatching { Files.readAllBytes(f) }.getOrNull() else null
+        } else {
+            GitAccess.fileContent(project, o.repo.root, o.overview.commit, path)
+        }
         o.contents[path] = java.util.Optional.ofNullable(bytes)
         return bytes
     }
@@ -297,7 +387,7 @@ class OverviewService(private val project: Project) : Disposable {
         goToAnchor(next)
     }
 
-    /** gg's Backspace: focus the tool window on the overview, at the anchor the user left. */
+    /** gg's Backspace: focus the tool window on the document, at the anchor the user left. */
     fun backToOverview() {
         val o = open ?: return
         val tw = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return

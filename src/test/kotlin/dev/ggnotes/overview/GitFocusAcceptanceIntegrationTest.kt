@@ -76,7 +76,7 @@ class GitFocusAcceptanceIntegrationTest : HeavyPlatformTestCase() {
         val overview = repoOverviews.contents.overviews.single { it.commit == commit }
         assertEquals("GitFocus tab: branch-first rows", overview.title)
         assertEquals("Claude Opus 5.5", overview.author)
-        assertNotNull("commit $commit must be in the checkout", repoOverviews.groups.single { it.commit == commit }.subject)
+        assertNotNull("commit $commit must be in the checkout", repoOverviews.model.commits.single { it.commit == commit }.subject)
 
         service.open(overview, repo)
         val open = service.open!!
@@ -113,7 +113,7 @@ class GitFocusAcceptanceIntegrationTest : HeavyPlatformTestCase() {
         val titles = snapshot.repos.single().contents.overviews.map { it.title }.sorted()
         assertEquals(listOf("How the gate works", "PR 7: the gate, reviewed"), titles)
         // d5efa035 exists in git-focus, so the commit overview sits under a known commit; the PR one does not
-        val groups = snapshot.repos.single().groups
+        val groups = snapshot.repos.single().model.commits
         assertNotNull(groups.single { it.commit == commit }.subject)
         assertNull(groups.single { it.commit != commit }.subject)
     }
