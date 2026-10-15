@@ -120,7 +120,7 @@ object RemarkOverlay {
             val metrics = editor.contentComponent.getFontMetrics(font(editor))
             val width = (editor.scrollingModel.visibleArea.width - JBUI.scale(40)).coerceAtLeast(JBUI.scale(200))
             val out = ArrayList<Pair<String, Boolean>>()
-            out += ("✎ " + remark.summary.trim()) to true
+            out += remark.summary.trim() to true
             val rationale = remark.rationale?.trim().orEmpty()
             if (rationale.isNotEmpty()) {
                 for (paragraph in rationale.split('\n')) {

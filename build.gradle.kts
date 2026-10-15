@@ -105,9 +105,30 @@ intellijPlatform {
 // opens that project in the sandbox IDE without the trust dialog;
 // `-Pggnotes.stateHome=/tmp/x` points gg's store lookup at a throwaway
 // XDG_STATE_HOME holding notes/<key>/commits.toml.
-tasks.named<org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask>("runIde") {
+// `-Pggnotes.demo` makes the startup activity open the tool window, the
+// first overview and its first anchor by itself (screenshots, smoke runs).
+fun org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask.acceptanceDefaults() {
     systemProperty("idea.trust.all.projects", "true")
+    // a fresh sandbox otherwise stops at the privacy-policy / data-sharing dialogs
+    systemProperty("jb.privacy.policy.text", "<!--999.999-->")
+    systemProperty("jb.consents.confirmation.enabled", "false")
     providers.gradleProperty("ggnotes.stateHome").orNull?.let { environment("XDG_STATE_HOME", it) }
+    providers.gradleProperty("ggnotes.demo").orNull?.let { shot ->
+        systemProperty("ggnotes.demo", "true")
+        // -Pggnotes.demo=/path/file.png also saves a picture of the IDE frame there
+        if (shot.isNotBlank()) systemProperty("ggnotes.demo.shot", shot)
+    }
+}
+tasks.named<org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask>("runIde") { acceptanceDefaults() }
+
+// The IU sandbox stops at its first-run license dialog; Community has none,
+// so `./gradlew runIdeCommunity --args=...` is the headless-friendly run.
+intellijPlatformTesting.runIde {
+    register("runIdeCommunity") {
+        type = IntelliJPlatformType.IntellijIdeaCommunity
+        version = "2024.2.5"
+        task { acceptanceDefaults() }
+    }
 }
 
 kotlin {
