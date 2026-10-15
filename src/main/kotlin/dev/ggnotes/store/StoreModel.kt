@@ -55,7 +55,9 @@ object StoreModel {
         val records = contents.records
         val repliesByParent = records.filter { it.kind == RecordKind.REPLY }.groupBy { it.parentId!! }
         val resolutions = contents.resolved.associateBy { it.root }
-        val reviews = Reviews.build(contents)
+        val rawReviews = Reviews.build(contents)
+        // a scoped note whose review is not in the store has no row to sit under: it falls back to the commit's files
+        val scopedWithReview = rawReviews.flatMap { r -> r.scopedNotes.map { it.id } }.toSet()
 
         fun threadsOf(roots: List<NoteRecord>): List<NoteThread> = roots
             .sortedWith(compareBy<NoteRecord> { it.first }.thenBy { it.created ?: EPOCH })
@@ -73,9 +75,11 @@ object StoreModel {
             .toSortedMap()
             .map { (path, roots) -> FileEntry(path, threadsOf(roots)) }
 
-        // committed, unscoped line notes and forge drafts, per commit
+        val reviews = rawReviews.map { r -> r.copy(scopedThreads = threadsOf(r.scopedNotes)) }
+
+        // committed line notes (unscoped, or scoped with no review to sit under) and forge drafts, per commit
         val committedNotes = records.filter {
-            (it.kind == RecordKind.LINE_NOTE && !it.isLive && !it.scoped) || it.kind == RecordKind.FORGE_DRAFT
+            (it.kind == RecordKind.LINE_NOTE && !it.isLive && (!it.scoped || it.id !in scopedWithReview)) || it.kind == RecordKind.FORGE_DRAFT
         }
         val commitShas = LinkedHashSet<String>()
         contents.overviews.forEach { commitShas += it.commit }

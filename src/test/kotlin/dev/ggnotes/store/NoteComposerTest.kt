@@ -85,6 +85,17 @@ class NoteComposerTest {
     }
 
     @Test
+    fun `an old-side note with no placement is listed without gone or sweep marks`() {
+        val question = gateThreads().single { it.root.id == "aa110001" }
+        val old = NoteThread(question.root.copy(side = "old"), emptyList(), null, false)
+        val doc = NoteComposer.compose("internal/x/gate.go", listOf(old), emptyMap(), now = java.time.OffsetDateTime.parse("2026-10-20T00:00:00Z"))
+        assertTrue(doc.overview, doc.overview.contains("old side"))
+        assertFalse(doc.overview, doc.overview.contains("gone"))
+        assertFalse(doc.overview, doc.overview.contains("next start"))
+        assertFalse(doc.overview, doc.overview.contains("no fingerprint"))
+    }
+
+    @Test
     fun `old-side notes and forge drafts are listed but not placed`() {
         val threads = gateThreads()
         val question = threads.single { it.root.id == "aa110001" }

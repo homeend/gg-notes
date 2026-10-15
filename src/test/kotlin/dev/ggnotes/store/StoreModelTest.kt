@@ -90,6 +90,31 @@ class StoreModelTest {
     }
 
     @Test
+    fun `a scoped note keeps its replies and resolution under the review row`() {
+        val c = fixture()
+        val scoped = c.records.single { it.id == "aa110001" }.copy(preview = "main...refs/gg/pr/7", address = c.records.single { it.id == "aa110001" }.address.copy(commit = prHead))
+        val reply = c.records.single { it.id == "aa110002" }.copy(address = scoped.address)
+        val contents = c.copy(records = c.records.map { when (it.id) { "aa110001" -> scoped; "aa110002" -> reply; else -> it } })
+        val model = StoreModel.build(contents, headSha = null, subjects = emptyMap())
+        val pr = model.commits.single { it.commit == prHead }
+        val thread = pr.reviews.single().scopedThreads.single { it.root.id == "aa110001" }
+        assertEquals(listOf("aa110002"), thread.replies.map { it.id })
+        assertNotNull(thread.resolution)
+        assertTrue(pr.files.flatMap { it.threads }.none { it.root.id == "aa110001" })
+    }
+
+    @Test
+    fun `a scoped note whose review is not in the store falls back to the commit's files`() {
+        val c = fixture()
+        val scoped = c.records.single { it.id == "91f0aa07" }.copy(preview = "main...refs/gg/pr/99")
+        val contents = c.copy(records = c.records.map { if (it.id == "91f0aa07") scoped else it })
+        val model = StoreModel.build(contents, headSha = null, subjects = emptyMap())
+        val pr = model.commits.single { it.commit == prHead }
+        assertEquals(listOf("91f0aa07"), pr.files.single().threads.map { it.root.id })
+        assertTrue(pr.files.single().threads.single().root.scoped)
+    }
+
+    @Test
     fun `a forge draft reply is a thread of its own marked as a draft`() {
         val c = fixture()
         val draft = c.records.single { it.id == "aa110002" }.copy(id = "f0f0f0f0", parentId = "forge:42", kind = RecordKind.FORGE_DRAFT)

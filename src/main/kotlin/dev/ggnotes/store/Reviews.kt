@@ -71,6 +71,8 @@ data class Review(
     val resolvedRemarks: Set<Int>,
     /** Committed line notes written in this review's scope (§1.1 "scoped"), shown under its row (§8). */
     val scopedNotes: List<NoteRecord>,
+    /** The same notes as threads (replies, resolution), filled in by [StoreModel]. */
+    val scopedThreads: List<NoteThread> = emptyList(),
 ) {
     val id: String get() = record.id
     val title: String get() = record.summary

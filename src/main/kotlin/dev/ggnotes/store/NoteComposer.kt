@@ -42,14 +42,18 @@ object NoteComposer {
             if (n.side == "old") md.append(" `old side`")
             if (thread.forgeDraft) md.append(" _draft reply to a GitHub thread_")
             if (thread.resolved) md.append(" ✓ resolved").also { r -> thread.resolution?.by?.let { md.append(" by ").append(escapeText(it)) } }
-            when (p.status) {
-                RelocationStatus.STALE -> md.append(" ⚠ not found at its lines; shown at ").append(p.first).append('–').append(p.last)
-                RelocationStatus.ORPHANED -> md.append(" ⚠ gone: the file or its side is absent")
-                RelocationStatus.UNVERIFIED -> md.append(" _(no fingerprint)_")
-                RelocationStatus.ACTIVE -> if (p.first != n.first || p.last != n.last) md.append(" (moved from ").append(n.first).append('–').append(n.last).append(')')
-            }
-            if (sweepDue(n, now) || p.status == RelocationStatus.STALE || p.status == RelocationStatus.ORPHANED) {
-                md.append(" _(gg drops it on its next start here)_")
+            if (n.scoped) md.append(" `").append(n.prNumber?.let { "PR #$it" } ?: n.preview).append('`')
+            // an old-side note is never placed (SPEC-part2 §4.1), so its placement says nothing about it
+            if (n.side != "old") {
+                when (p.status) {
+                    RelocationStatus.STALE -> md.append(" ⚠ not found at its lines; shown at ").append(p.first).append('–').append(p.last)
+                    RelocationStatus.ORPHANED -> md.append(" ⚠ gone: the file or its side is absent")
+                    RelocationStatus.UNVERIFIED -> if (n.contextHash.isEmpty()) md.append(" _(no fingerprint)_")
+                    RelocationStatus.ACTIVE -> if (p.first != n.first || p.last != n.last) md.append(" (moved from ").append(n.first).append('–').append(n.last).append(')')
+                }
+                if (sweepDue(n, now) || p.status == RelocationStatus.STALE || p.status == RelocationStatus.ORPHANED) {
+                    md.append(" _(gg drops it on its next start here)_")
+                }
             }
             n.rationale.takeIf { it.isNotBlank() }?.let { md.append("\n  ").append(escapeText(it.trim()).replace("\n", "\n  ")) }
             for (r in thread.replies) md.append("\n  ↳ ").append(replyLine(r))

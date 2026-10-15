@@ -125,7 +125,11 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
                 for (r in entry.reviews) {
                     val rn = DefaultMutableTreeNode(ReviewNode(r, repo.repo))
                     gn.add(rn)
-                    for (scoped in r.scopedNotes) rn.add(DefaultMutableTreeNode(ThreadNode(NoteThread(scoped, emptyList(), null, false), entry.commit, null, repo.repo)))
+                    for (t in r.scopedThreads) {
+                        val tn = DefaultMutableTreeNode(ThreadNode(t, entry.commit, null, repo.repo))
+                        rn.add(tn)
+                        for (reply in t.replies) tn.add(DefaultMutableTreeNode(ReplyNode(reply)))
+                    }
                 }
                 for (f in entry.files) gn.add(fileNode(f, entry.commit, null, repo.repo))
             }

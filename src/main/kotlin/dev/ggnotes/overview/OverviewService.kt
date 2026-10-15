@@ -17,6 +17,8 @@ import dev.ggnotes.store.FileState
 import dev.ggnotes.store.MarkdownRenderer
 import dev.ggnotes.store.NoteComposer
 import dev.ggnotes.store.NoteThread
+import dev.ggnotes.store.Relocation
+import dev.ggnotes.store.RelocationStatus
 import dev.ggnotes.store.Relocator
 import dev.ggnotes.store.Overview
 import dev.ggnotes.store.RenderedAnchor
@@ -311,9 +313,12 @@ class OverviewService(private val project: Project) : Disposable {
             }.orElse(null)
             val placements = threads.associate { t ->
                 val n = t.root
-                val lines = if (n.side == "old") null else sideLines(n.address.state)
-                n.id to if (live) Relocator.relocate(lines, n.first, n.last, n.contextHash)
-                else Relocator.verifyCommitted(lines, n.first, n.last, n.contextHash)
+                n.id to when {
+                    // the old side (<sha>^, the index copy, HEAD) is not shown: listed, never placed
+                    n.side == "old" -> Relocation(RelocationStatus.UNVERIFIED, n.first, n.last)
+                    live -> Relocator.relocate(sideLines(n.address.state), n.first, n.last, n.contextHash)
+                    else -> Relocator.verifyCommitted(sideLines(n.address.state), n.first, n.last, n.contextHash)
+                }
             }
             val doc = NoteComposer.compose(path, threads, placements)
             val first = threads.first().root
