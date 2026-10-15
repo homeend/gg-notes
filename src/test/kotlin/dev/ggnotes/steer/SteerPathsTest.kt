@@ -28,6 +28,17 @@ class SteerPathsTest {
     }
 
     @Test
+    fun `gg's repokey-vectors json, windows rows with the windows rule`() {
+        val rows = com.google.gson.JsonParser.parseString(java.nio.file.Files.readString(java.nio.file.Paths.get("docs/gg-steer/repokey-vectors.json"))).asJsonArray
+        assertEquals(7, rows.size())
+        for (r in rows) {
+            val o = r.asJsonObject
+            val windows = o.get("os")?.asString == "windows"
+            assertEquals(o.get("in").asString, o.get("out").asString, SteerPaths.enc(o.get("in").asString, windows = windows))
+        }
+    }
+
+    @Test
     fun `inbox dir is state slash gg sessions enc(common) steer enc(worktree)`() {
         val inbox = SteerPaths.inboxDir(Paths.get("/home/homeend/.local/state"),
             "/home/homeend/.claude/jobs/2620a6cb/tmp/cmprepo/.git", "/home/homeend/.claude/jobs/2620a6cb/tmp/cmprepo", windows = false)

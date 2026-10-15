@@ -57,16 +57,21 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             "overview_show" -> overviewShow(s, c)
             "overview_rm" -> overviewRm(s, c)
             "focus", "reload", "serve" -> Reply.fail(c.id, "${c.cmd} is a gg TUI command")
-            else -> Reply.fail(c.id, "unknown command ${c.cmd}")
+            else -> Reply.fail(c.id, "unknown command \"${c.cmd}\"")
         }
     }
+
+    private val KNOWN_STATES = setOf("", "unstaged", "staged", "untracked", "commit", "preview", "ref", "pair")
 
     // ---- navigate ----------------------------------------------------------------------
 
     private fun navigate(s: SteerService.RootSession, c: Command): Reply {
         val state = c.target?.state.orEmpty()
+        if (state !in KNOWN_STATES) return Reply.fail(c.id, "unknown target state \"$state\"")
         if (state == "preview" || state == "ref" || state == "pair") return Reply.fail(c.id, "the IDE cannot show a $state target")
-        if (c.line?.side == "old") return Reply.fail(c.id, "the IDE shows no old side")
+        val side = c.line?.side.orEmpty()
+        if (c.line != null && side != "" && side != "new" && side != "old") return Reply.fail(c.id, "unknown side \"$side\"")
+        if (side == "old") return Reply.fail(c.id, "the IDE shows no old side")
         val file = c.file?.takeIf { it.isNotEmpty() }
         if (file == null) {
             c.commit?.takeIf { it.isNotEmpty() }?.let { return showCommit(s, c, it) }
@@ -137,7 +142,7 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             }
         }
         failure?.let { return Reply.fail(c.id, "cannot show commit ${sha.take(7)}: $it") }
-        return Reply.ok(c.id, "showing commit ${sha.take(7)}")
+        return Reply.ok(c.id, "revealed commit ${sha.take(7)}")
     }
 
     private fun spanSuffix(no: Int, end: Int): String = when {
@@ -173,9 +178,12 @@ class SteerHandler(private val project: Project, private val service: SteerServi
 
     private fun highlight(s: SteerService.RootSession, c: Command): Reply {
         val file = c.file?.takeIf { it.isNotEmpty() } ?: return Reply.fail(c.id, "highlight needs a file")
-        if (c.side == "old") return Reply.fail(c.id, "the IDE shows no old side")
+        val side = c.side.orEmpty()
+        if (side == "old") return Reply.fail(c.id, "the IDE shows no old side")
+        if (side != "" && side != "new") return Reply.fail(c.id, "unknown side \"$side\"")
         if (c.start < 1) return Reply.fail(c.id, "a line number is 1-based")
         val end = if (c.end >= c.start) c.end else c.start
+        val tone = c.tone?.takeIf { it.isNotEmpty() } ?: "info"
         val vf = workingFile(s, file) ?: return Reply.fail(c.id, "$file is not in the working tree")
         val entry = s.memory.touchFile("worktree", file, null, background = true)
         s.files[entry.id] = vf
@@ -194,7 +202,7 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             }
             val first = c.start.coerceIn(1, doc.lineCount)
             val last = end.coerceIn(first, doc.lineCount)
-            val color = toneColor(c.tone)
+            val color = toneColor(tone)
             val h = editor.markupModel.addRangeHighlighter(
                 doc.getLineStartOffset(first - 1), doc.getLineEndOffset(last - 1),
                 HighlighterLayer.SELECTION - 3, TextAttributes().apply { backgroundColor = color.background },
@@ -203,15 +211,21 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             s.highlights += h
         }
         failure?.let { return Reply.fail(c.id, it) }
-        return Reply.ok(c.id, "highlighted $file:" + (if (end > c.start) "${c.start}-$end" else "${c.start}"))
+        return Reply.ok(c.id, "marked $file new:${c.start}-$end as $tone")
     }
 
+    /** `highlight_clear`: every mark, or with `file` only that file's (the TUI's prose). */
     private fun highlightClear(s: SteerService.RootSession, c: Command): Reply {
+        val file = c.file?.takeIf { it.isNotEmpty() }
+        val vf = file?.let { s.files.values.firstOrNull { v -> v.path.endsWith("/$it") || v.name == it } }
         onEdt {
-            for (h in s.highlights) runCatching { if (h.isValid) h.dispose() }
-            s.highlights.clear()
+            val doomed = if (file == null) s.highlights.toList() else s.highlights.filter { h ->
+                !h.isValid || com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getFile(h.document).let { f -> f == vf || f?.path?.endsWith("/$file") == true }
+            }
+            for (h in doomed) runCatching { if (h.isValid) h.dispose() }
+            s.highlights.removeAll(doomed.toSet())
         }
-        return Reply.ok(c.id, "cleared")
+        return Reply.ok(c.id, if (file == null) "cleared every mark" else "cleared the marks on $file")
     }
 
     private class Tone(val background: Color, val band: Color)
@@ -356,7 +370,7 @@ class SteerHandler(private val project: Project, private val service: SteerServi
                 return@onEdt
             }
             placeCaret(editor, target.start, target.end, Lines.split(editor.document.charsSequence).size)
-            reply = Reply.ok(c.id, "opened ${entry.path}:${target.start} at line ${target.start}")
+            reply = Reply.ok(c.id, "opened ${entry.path}:${target.start}")
         }
         return reply ?: Reply.fail(c.id, none)
     }

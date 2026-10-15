@@ -102,7 +102,7 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         Files.move(ide.resolve(".tmp"), ide.resolve("cmd-1-1.json"))
         val reply = ide.resolve("reply-1-1.json")
         waitFor("reply file") { Files.isRegularFile(reply) }
-        assertEquals("""{"id":"1-1","ok":true,"detail":"opened internal/x/gate.go:3-4 at line 3"}""", Files.readString(reply))
+        assertEquals("""{"id":"1-1","ok":true,"detail":"opened internal/x/gate.go:3-4"}""", Files.readString(reply))
         assertFalse("the command file was consumed", Files.exists(ide.resolve("cmd-1-1.json")))
         val editor = FileEditorManager.getInstance(project).selectedTextEditor!!
         assertEquals("gate.go", FileEditorManager.getInstance(project).selectedFiles.single().name)
@@ -116,7 +116,7 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         Files.writeString(ide.resolve("cmd-1-2.json"), """{"id":"1-2","cmd":"navigate","file":"internal/y/call.go","line":{"side":"new","no":9}}""")
         Files.writeString(ide.resolve("cmd-1-3.json"), """{"id":"1-3","cmd":"dance","wait":true}""")
         waitFor("unknown command refused") { Files.isRegularFile(ide.resolve("reply-1-3.json")) }
-        assertEquals("""{"id":"1-3","ok":false,"error":"unknown command dance"}""", Files.readString(ide.resolve("reply-1-3.json")))
+        assertEquals("""{"id":"1-3","ok":false,"error":"unknown command \"dance\""}""", Files.readString(ide.resolve("reply-1-3.json")))
         waitFor("call.go opened past its end") { FileEditorManager.getInstance(project).selectedFiles.singleOrNull()?.name == "call.go" }
         assertFalse(Files.exists(ide.resolve("reply-1-2.json")))
         assertEquals(0, FileEditorManager.getInstance(project).selectedTextEditor!!.caretModel.logicalPosition.line)
@@ -129,14 +129,14 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
             return com.google.gson.JsonParser.parseString(Files.readString(ide.resolve("reply-$id.json"))).asJsonObject
         }
         val atCommit = post("2-1", """{"id":"2-1","cmd":"navigate","file":"internal/x/gate.go","target":{"state":"commit","commit":"$sha"},"line":{"side":"new","no":4},"wait":true}""")
-        assertEquals("opened internal/x/gate.go:4 at line 4", atCommit.get("detail").asString)
+        assertEquals("opened internal/x/gate.go:4", atCommit.get("detail").asString)
         val revisionFile = FileEditorManager.getInstance(project).selectedFiles.single()
         assertFalse("the working file moved on, so this is the revision tab", revisionFile.isInLocalFileSystem)
         assertFalse(FileEditorManager.getInstance(project).selectedTextEditor!!.document.text.contains("edited after the commit"))
 
         git("add", "internal/x/gate.go")
         val staged = post("2-2", """{"id":"2-2","cmd":"navigate","file":"internal/x/gate.go","target":{"state":"staged"},"line":{"side":"new","no":99},"wait":true}""")
-        assertEquals(staged.toString(), "opened internal/x/gate.go:99 at line 6 (line 99 is past the end, 6 lines)", staged.get("detail")?.asString)
+        assertEquals(staged.toString(), "opened internal/x/gate.go:99; clamped to line 6", staged.get("detail")?.asString)
         assertTrue(FileEditorManager.getInstance(project).selectedTextEditor!!.document.text.contains("edited after the commit"))
         assertTrue("the index copy opens in viewer mode", (FileEditorManager.getInstance(project).selectedTextEditor as com.intellij.openapi.editor.ex.EditorEx).isViewer)
         assertTrue(FileEditorManager.getInstance(project).selectedFiles.single() is git4idea.index.vfs.GitIndexVirtualFile)
@@ -166,10 +166,10 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         assertEquals("no open file f9", post("2-9", """{"id":"2-9","cmd":"file_focus","file_id":"f9","wait":true}""").get("error").asString)
 
         val hl = post("2-10", """{"id":"2-10","cmd":"highlight","file":"internal/x/gate.go","side":"new","start":3,"end":4,"tone":"warn","wait":true}""")
-        assertEquals("highlighted internal/x/gate.go:3-4", hl.get("detail").asString)
+        assertEquals("marked internal/x/gate.go new:3-4 as warn", hl.get("detail").asString)
         assertEquals(1, session.highlights.size)
         assertTrue(session.highlights.single().isValid)
-        assertEquals("cleared", post("2-11", """{"id":"2-11","cmd":"highlight_clear","wait":true}""").get("detail").asString)
+        assertEquals("cleared every mark", post("2-11", """{"id":"2-11","cmd":"highlight_clear","wait":true}""").get("detail").asString)
         assertEquals(0, session.highlights.size)
         assertEquals("focus is a gg TUI command", post("2-12", """{"id":"2-12","cmd":"focus","panel":"commits","wait":true}""").get("error").asString)
 
@@ -218,7 +218,7 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
 
         // stepping and removal
         ApplicationManager.getApplication().invokeAndWait { gateEditor.caretModel.moveToOffset(0) }
-        assertEquals("opened internal/x/gate.go:6 at line 6", post("3-8", """{"id":"3-8","cmd":"navigate","step":"next_note","wait":true}""").get("detail").asString)
+        assertEquals("opened internal/x/gate.go:6", post("3-8", """{"id":"3-8","cmd":"navigate","step":"next_note","wait":true}""").get("detail").asString)
         assertEquals("no next note in this diff", post("3-9", """{"id":"3-9","cmd":"navigate","step":"next_note","wait":true}""").get("error").asString)
         assertEquals("removed t1", post("3-10", """{"id":"3-10","cmd":"note_rm","note_id":"t1","wait":true}""").get("detail").asString)
         assertEquals("no note t1", post("3-11", """{"id":"3-11","cmd":"note_rm","note_id":"t1","wait":true}""").get("error").asString)
@@ -434,6 +434,36 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         service.openReview(working.reviews.single(), repo)
         waitFor("working review opened") { service.open?.overview?.id == "bb220002" }
         assertTrue(service.open!!.document!!.overview, service.open!!.document!!.overview.contains("tree has changed"))
+    }
+
+    /** gg's replay corpus (docs/gg-steer/steer-cases.json): every case that is not tui_only, through the real handler. */
+    fun testSteerReplayCorpus() {
+        val corpus = com.google.gson.JsonParser.parseString(Files.readString(Paths.get("docs/gg-steer/steer-cases.json"))).asJsonObject
+        for ((name, content) in corpus.getAsJsonObject("files").entrySet()) write(name, content.asString)
+        root.refresh(false, true)
+        val steer = dev.ggnotes.steer.SteerService.getInstance(project)
+        val session = ApplicationManager.getApplication().executeOnPooledThread<List<dev.ggnotes.steer.SteerService.RootSession>> { steer.startSync() }.get().single()
+        val ide = session.ideDir
+        var n = 0
+        val failures = ArrayList<String>()
+        for (c in corpus.getAsJsonArray("cases")) {
+            val case = c.asJsonObject
+            if (case.get("tui_only")?.asBoolean == true) continue
+            val id = "9-${++n}"
+            val command = case.getAsJsonObject("command").deepCopy().apply { addProperty("id", id); addProperty("wait", true) }
+            Files.writeString(ide.resolve(".tmp-$id"), command.toString())
+            Files.move(ide.resolve(".tmp-$id"), ide.resolve("cmd-$id.json"))
+            waitFor("reply $id (${case.get("name").asString})") { Files.isRegularFile(ide.resolve("reply-$id.json")) }
+            val reply = com.google.gson.JsonParser.parseString(Files.readString(ide.resolve("reply-$id.json"))).asJsonObject
+            val expect = case.getAsJsonObject("reply")
+            val caseName = case.get("name").asString
+            if (reply.get("ok").asBoolean != expect.get("ok").asBoolean) failures += "$caseName: ok=${reply.get("ok")} want ${expect.get("ok")} (reply $reply)"
+            expect.get("detail")?.asString?.let { want -> if (reply.get("detail")?.asString != want) failures += "$caseName: detail=${reply.get("detail")} want \"$want\"" }
+            expect.get("error")?.asString?.let { want -> if (reply.get("error")?.asString != want) failures += "$caseName: error=${reply.get("error")} want \"$want\"" }
+            expect.get("error_prefix")?.asString?.let { want -> if (reply.get("error")?.asString?.startsWith(want) != true) failures += "$caseName: error=${reply.get("error")} want prefix \"$want\"" }
+        }
+        assertEquals("corpus mismatches:\n" + failures.joinToString("\n"), emptyList<String>(), failures)
+        assertEquals(15, n)
     }
 
     private fun waitFor(what: String, condition: () -> Boolean) {

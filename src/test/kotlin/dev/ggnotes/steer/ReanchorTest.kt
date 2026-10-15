@@ -85,6 +85,29 @@ class ReanchorTest {
     }
 
     @Test
+    fun `gg's reanchor-cases json`() {
+        val cases = com.google.gson.JsonParser.parseString(java.nio.file.Files.readString(java.nio.file.Paths.get("docs/gg-steer/reanchor-cases.json"))).asJsonArray
+        assertEquals(8, cases.size())
+        for (c in cases) {
+            val o = c.asJsonObject
+            val name = o.get("name").asString
+            val old = o.getAsJsonArray("old").map { it.asString }
+            val cur = o.getAsJsonArray("cur").map { it.asString }
+            val spec = o.getAsJsonObject("note")
+            val start = spec.get("start").asInt
+            val end = spec.get("end").asInt
+            val outdated = spec.get("outdated")?.asBoolean ?: false
+            val anchor = spec.getAsJsonArray("anchor")?.map { it.asString } ?: old.subList(start - 1, end)
+            val n = Reanchor.Note(start, end, outdated, anchor)
+            Reanchor.reanchor(listOf(n), old, cur)
+            val expect = o.getAsJsonObject("expect")
+            assertEquals("$name: start", expect.get("start").asInt, n.start)
+            assertEquals("$name: end", expect.get("end").asInt, n.end)
+            assertEquals("$name: outdated", expect.get("outdated").asBoolean, n.outdated)
+        }
+    }
+
+    @Test
     fun `same line map and relocate helpers`() {
         val to = Reanchor.sameLineMap(listOf("a", "b", "c"), listOf("z", "a", "b", "c"))
         assertEquals(listOf(0, 2, 3, 4), to.toList())

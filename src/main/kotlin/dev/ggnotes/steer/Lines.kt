@@ -10,10 +10,9 @@ object Lines {
         return s.split('\n')
     }
 
-    /** `<lead> at line <n>`; a line past the end lands on the last one and says so; no line → the lead alone. */
+    /** The TUI's landing prose (replay corpus): the lead alone; a line past the end lands on the last one and says so. */
     fun landed(lead: String, line: Int, lineCount: Int): String {
         if (line <= 0 || lineCount <= 0) return lead
-        return if (line > lineCount) "$lead at line $lineCount (line $line is past the end, $lineCount lines)"
-        else "$lead at line $line"
+        return if (line > lineCount) "$lead; clamped to line $lineCount" else lead
     }
 }
