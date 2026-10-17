@@ -96,6 +96,18 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
             }
         }
         TreeUtil.installActions(tree)
+        // right-click: select the row under the pointer (so the document shows what the menu is about), then the menu
+        tree.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mousePressed(e: java.awt.event.MouseEvent) = selectAt(e)
+            override fun mouseReleased(e: java.awt.event.MouseEvent) = selectAt(e)
+            private fun selectAt(e: java.awt.event.MouseEvent) {
+                if (!e.isPopupTrigger) return
+                val path = tree.getPathForLocation(e.x, e.y) ?: return
+                if (tree.selectionPath != path) tree.selectionPath = path
+            }
+        })
+        com.intellij.ui.PopupHandler.installPopupMenu(
+            tree, com.intellij.openapi.actionSystem.DefaultActionGroup(RemoveFromStoreAction()), "GgNotesTreePopup")
 
         status.border = JBUI.Borders.empty(4, 8)
         status.isVisible = false
@@ -185,6 +197,50 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         val proportion = TreeShare.proportion(content, splitter.height, JBUI.scale(TREE_MIN_HEIGHT))
         if (kotlin.math.abs(proportion - splitter.proportion) < 0.001f) return
         splitter.proportion = proportion
+    }
+
+    /** The removal a row stands for (every row kind has one), with the repository whose store holds it. */
+    private fun planFor(node: DefaultMutableTreeNode): Pair<dev.ggnotes.store.RemovalPlan, GitRepository>? {
+        val parentRepo = generateSequence(node.parent as? DefaultMutableTreeNode) { it.parent as? DefaultMutableTreeNode }
+            .mapNotNull { (it.userObject as? RepoNode)?.repo }.firstOrNull()
+        fun repoOrSingle(repo: GitRepository?) = repo ?: parentRepo ?: service.snapshot.repos.singleOrNull()?.repo
+        return when (val u = node.userObject) {
+            is OverviewNode -> dev.ggnotes.store.RemovalPlan.forOverview(u.overview) to u.repo
+            is ReviewNode -> dev.ggnotes.store.RemovalPlan.forReview(u.review) to u.repo
+            is FileNode -> dev.ggnotes.store.RemovalPlan.forFile(u.file) to u.repo
+            is ThreadNode -> dev.ggnotes.store.RemovalPlan.forThread(u.thread) to u.repo
+            is ReplyNode -> repoOrSingle(null)?.let { dev.ggnotes.store.RemovalPlan.forReply(u.reply) to it }
+            is GroupNode -> dev.ggnotes.store.RemovalPlan.forCommit(u.entry) to u.repo
+            is WorkingNode -> dev.ggnotes.store.RemovalPlan.forWorking(u.entry) to u.repo
+            else -> null
+        }
+    }
+
+    /** The tree's context menu: hand the selected row's records to gg for deletion, after a confirmation. */
+    private inner class RemoveFromStoreAction : com.intellij.openapi.actionSystem.AnAction(
+        GgNotesBundle.message("action.GgNotes.RemoveFromStore.text"),
+        GgNotesBundle.message("action.GgNotes.RemoveFromStore.description"),
+        com.intellij.icons.AllIcons.Actions.GC,
+    ) {
+        override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.EDT
+
+        override fun update(e: com.intellij.openapi.actionSystem.AnActionEvent) {
+            val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
+            e.presentation.isEnabledAndVisible = node != null && planFor(node)?.first?.lines?.isNotEmpty() == true
+        }
+
+        override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) {
+            val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return
+            val (plan, repo) = planFor(node) ?: return
+            val question = GgNotesBundle.message("remove.confirm.${plan.kind.name}", plan.label, plan.records) + "\n\n" +
+                GgNotesBundle.message("remove.confirm.note")
+            val answer = com.intellij.openapi.ui.Messages.showYesNoDialog(
+                project, question, GgNotesBundle.message("remove.confirm.title"),
+                GgNotesBundle.message("action.GgNotes.RemoveFromStore.text"), com.intellij.openapi.ui.Messages.getCancelButton(),
+                com.intellij.openapi.ui.Messages.getWarningIcon())
+            if (answer != com.intellij.openapi.ui.Messages.YES) return
+            StoreRemoval.perform(project, repo, plan)
+        }
     }
 
     private fun fileNode(f: FileEntry, commit: String, worktree: String?, repo: GitRepository): DefaultMutableTreeNode {
