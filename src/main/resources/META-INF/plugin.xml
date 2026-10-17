@@ -30,6 +30,9 @@
             <li>The IDE is a <code>gg session … --to ide</code> target: an agent in a terminal can
                 open a file at a line or range, highlight lines, leave temporary remarks and show
                 an in-memory overview in the tool window, with no gg running.</li>
+            <li>Opening a file at a commit loads its content in the background; newer IDEs
+                reported <code>GitContentRevision.getContentAsBytes() should not be called from
+                EDT</code> when the editor asked for it on the UI thread.</li>
         </ul>
 
         <h3>0.1.0</h3>

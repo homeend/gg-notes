@@ -15,9 +15,13 @@ object RevisionFiles {
     fun atCommit(project: Project, root: VirtualFile, sha: String, path: String): VirtualFile {
         val filePath = VcsUtil.getFilePath(root.path + "/" + path, false)
         val revision = GitContentRevision.createRevision(filePath, GitRevisionNumber(sha), project)
-        // warm the revision's content cache off the EDT so the editor opens without a git call
-        runCatching { revision.content }
-        return ContentRevisionVirtualFile.create(revision)
+        val file = ContentRevisionVirtualFile.create(revision)
+        // Load the bytes INTO THE FILE here, off the EDT: opening it at a line makes the platform
+        // ask the file for its length on the EDT (OpenFileDescriptor's lazy range marker), and
+        // git4idea refuses to read a revision there. The file keeps the bytes; warming only the
+        // revision's cache is not enough, git4idea's check runs before its cache lookup.
+        runCatching { file.contentsToByteArray() }
+        return file
     }
 
     /**
