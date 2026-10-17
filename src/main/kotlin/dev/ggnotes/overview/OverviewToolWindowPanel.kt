@@ -49,7 +49,10 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     private val tree = Tree(model)
     private val status = JBLabel()
     private val document = DocumentPane(project, service)
+    private val splitter = OnePixelSplitter(true, TreeShare.MAX_SHARE)
     private var syncing = false
+    /** Set by a drag on the divider: from then on the user's size stands and [fitTree] stays out. */
+    private var userSized = false
 
     private class RepoNode(val repo: GitRepository)
     private class GroupNode(val entry: CommitEntry, val repo: GitRepository)
@@ -59,6 +62,13 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     private class FileNode(val file: FileEntry, val commit: String, val worktree: String?, val repo: GitRepository)
     private class ThreadNode(val thread: NoteThread, val commit: String, val worktree: String?, val repo: GitRepository)
     private class ReplyNode(val reply: NoteRecord)
+
+    private companion object {
+        /** Unscaled px around the rows: the scroll pane's border and a little air under the last row. */
+        const val TREE_PADDING = 10
+        /** Unscaled px the tree pane never shrinks below: room for the empty-text placeholder. */
+        const val TREE_MIN_HEIGHT = 56
+    }
 
     init {
         val group = ActionManager.getInstance().getAction("GgNotes.Toolbar") as ActionGroup
@@ -93,10 +103,23 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         top.add(status, BorderLayout.NORTH)
         top.add(ScrollPaneFactory.createScrollPane(tree), BorderLayout.CENTER)
 
-        val splitter = OnePixelSplitter(true, 0.38f)
         splitter.firstComponent = top
         splitter.secondComponent = document
         setContent(splitter)
+        // the tree takes what its rows need, up to TreeShare.MAX_SHARE of the window, until the user drags the divider
+        // (a drag on the divider itself, never a proportion event: the splitter fires those on its own too)
+        splitter.divider.addMouseMotionListener(object : java.awt.event.MouseMotionAdapter() {
+            override fun mouseDragged(e: java.awt.event.MouseEvent) {
+                userSized = true
+            }
+        })
+        splitter.addComponentListener(object : java.awt.event.ComponentAdapter() {
+            override fun componentResized(e: java.awt.event.ComponentEvent) = fitTree()
+        })
+        tree.addTreeExpansionListener(object : javax.swing.event.TreeExpansionListener {
+            override fun treeExpanded(event: javax.swing.event.TreeExpansionEvent) = fitTree()
+            override fun treeCollapsed(event: javax.swing.event.TreeExpansionEvent) = fitTree()
+        })
 
         service.ui = this
         service.addSnapshotListener(this) { rebuild() }
@@ -146,6 +169,22 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         model.reload()
         TreeUtil.expandAll(tree)
         if (selectedIdentity != null && selectedRepo != null) selectIdentity(selectedIdentity, selectedRepo)
+        fitTree()
+    }
+
+    /**
+     * Size the tree pane to its rows (plus the status line), capped at [TreeShare.MAX_SHARE]
+     * of the window so a long list scrolls inside it. Stops once the user drags the divider.
+     */
+    private fun fitTree() {
+        if (userSized || splitter.height <= 0) return
+        val rows = tree.rowCount
+        val rowsHeight = if (rows > 0) tree.getRowBounds(rows - 1)?.let { it.y + it.height } ?: rows * tree.rowHeight else 0
+        val statusHeight = if (status.isVisible) status.preferredSize.height else 0
+        val content = rowsHeight + statusHeight + JBUI.scale(TREE_PADDING)
+        val proportion = TreeShare.proportion(content, splitter.height, JBUI.scale(TREE_MIN_HEIGHT))
+        if (kotlin.math.abs(proportion - splitter.proportion) < 0.001f) return
+        splitter.proportion = proportion
     }
 
     private fun fileNode(f: FileEntry, commit: String, worktree: String?, repo: GitRepository): DefaultMutableTreeNode {
