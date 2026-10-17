@@ -466,6 +466,29 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         assertEquals(15, n)
     }
 
+    /**
+     * Opening a revision file at a line makes the platform ask the file for its length on the
+     * EDT (OpenFileDescriptor → lazy range marker → getLength). git4idea refuses to load content
+     * there, so the bytes must already sit in the virtual file when it leaves the pooled thread.
+     */
+    fun testRevisionFileCarriesItsBytesBeforeTheEdtSeesIt() {
+        val vf = com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService()
+            .submit<VirtualFile> { RevisionFiles.atCommit(project, root, sha, "internal/x/gate.go") }
+            .get(30, java.util.concurrent.TimeUnit.SECONDS)
+        // git4idea's own cache is the witness: a load on the EDT would fill it again
+        val cache = ProjectLevelVcsManager.getInstance(project).contentRevisionCache
+        cache.clearAll()
+        val filePath = com.intellij.vcsUtil.VcsUtil.getFilePath(root.path + "/internal/x/gate.go", false)
+        fun loadedThroughGit() = cache.getBytes(filePath, git4idea.GitRevisionNumber(sha), GitVcs.getKey(),
+            com.intellij.openapi.vcs.impl.ContentRevisionCache.UniqueType.REPOSITORY_CONTENT) != null
+        assertFalse(loadedThroughGit())
+        assertTrue(ApplicationManager.getApplication().isDispatchThread)
+        val committed = "package x\n\nfunc gate(open bool) bool {\n\treturn open\n}\n"
+        assertEquals(committed.length.toLong(), vf.length)
+        assertEquals(committed, String(vf.contentsToByteArray()))
+        assertFalse("the EDT asked git for the content", loadedThroughGit())
+    }
+
     private fun waitFor(what: String, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + 20_000
         while (!condition()) {

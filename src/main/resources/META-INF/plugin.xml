@@ -23,6 +23,13 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.2.1</h3>
+        <ul>
+            <li>Opening a file at a commit loads its content in the background; newer IDEs
+                reported <code>GitContentRevision.getContentAsBytes() should not be called from
+                EDT</code> when the editor asked for it on the UI thread.</li>
+        </ul>
+
         <h3>0.2.0</h3>
         <ul>
             <li>Reviews, line notes with replies and live notes on the working tree, read from the
