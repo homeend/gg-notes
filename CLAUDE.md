@@ -41,6 +41,14 @@ upload.
   read in the background, each note relocated (`Relocator.relocate`) and
   the anchors carry the relocated lines; a committed note is only verified.
   Never cache relocation results: gg's startup sweep rewrites the store.
+- Writes go THROUGH gg, never into the store files: the only write today is
+  "Remove from gg Store" (`RemovalPlan` → `StoreRemoval` → `GgCli.batch`,
+  i.e. `gg batch --keep-going` with `note rm <id>` / `overview rm <id>`
+  lines, children before parents). `GgCli` resolves `gg` from PATH (or
+  `ggnotes.gg`) to an absolute path and passes `ggnotes.env.*` through as
+  environment, so the integration test's temp `XDG_STATE_HOME` reaches gg.
+  Anything that blocks the EDT while waiting on `StoreRemoval` deadlocks
+  (its completion closes the document on the EDT): poll with `waitFor`.
 - Windows key spelling is CONFIRMED (2026-10-15): the spec branch's gg built
   for windows/amd64 (`GOOS=windows go build ./cmd/gg` in gigagit's
   `gg-notes-store-format` worktree, run through WSL interop in

@@ -23,6 +23,17 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.2.5</h3>
+        <ul>
+            <li>Right-click any row of the notes tree for <b>Remove from gg Store</b>: an overview,
+                a review (with the notes shown under it), a file's notes, one note thread, one reply,
+                everything under a commit, or a worktree's live records. After a confirmation the
+                plugin hands the deletion to <code>gg</code> itself (<code>gg batch</code> with
+                <code>note rm</code> / <code>overview rm</code>), so gg's own rules apply and the
+                store files are never rewritten by the IDE. Needs <code>gg</code> on PATH, or the
+                system property <code>ggnotes.gg</code> pointing at it.</li>
+        </ul>
+
         <h3>0.2.4</h3>
         <ul>
             <li>The notes tree above the document takes only the height its rows need, up to a

@@ -502,6 +502,39 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         assertFalse("the EDT asked git for the content", loadedThroughGit())
     }
 
+    /**
+     * "Remove from gg store" hands the deletion to gg itself (`gg batch` with `overview rm` /
+     * `note rm` lines, the store's XDG_STATE_HOME override passed through): the overview and the
+     * reply under it are gone from the re-read store, the review beside it stays, and the open
+     * document that showed the overview closes.
+     */
+    fun testRemoveFromStoreGoesThroughGg() {
+        val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)!!
+        val service = OverviewService.getInstance(project)
+        val before = ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { service.refreshSync() }.get()
+        val commit = before.repos.single().model.commits.single { it.commit == sha }
+        val overview = commit.overviews.single { it.id == "7cf0812f" }
+        assertEquals(listOf("c3d4e5f6"), commit.overviewReplies.getValue("7cf0812f").map { it.id })
+        service.open(overview, repo)
+        assertEquals("7cf0812f", service.open?.overview?.id)
+
+        // the completion closes the document on the EDT, which is this thread: wait while dispatching
+        val future = dev.ggnotes.overview.StoreRemoval.perform(project, repo, dev.ggnotes.store.RemovalPlan.forOverview(overview))
+        waitFor("gg batch to finish") { future.isDone }
+        val result = future.get()
+        assertTrue(result.stdout + result.stderr, result.ok)
+        assertTrue(result.stdout, result.stdout.contains("#1 ok overview rm 7cf0812f"))
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+
+        val after = service.snapshot.repos.single().model.commits.single { it.commit == sha }
+        assertEquals(emptyList<String>(), after.overviews.map { it.id })
+        assertEquals(listOf("c0ffee01"), after.reviews.map { it.id })
+        val ids = service.snapshot.repos.single().contents.records.map { it.id }
+        assertFalse("the reply went with its root", "c3d4e5f6" in ids)
+        assertTrue("other records stay", "aa110001" in ids)
+        assertNull("the document that showed the removed overview is closed", service.open)
+    }
+
     private fun waitFor(what: String, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + 20_000
         while (!condition()) {
