@@ -74,6 +74,16 @@ class SteerHandler(private val project: Project, private val service: SteerServi
         if (side == "old") return Reply.fail(c.id, "the IDE shows no old side")
         val file = c.file?.takeIf { it.isNotEmpty() }
         if (file == null) {
+            // a `?overview=<id>` / `?review=<id>` link: the stored document itself, as gg's TUI opens it
+            c.hintId?.takeIf { it.isNotEmpty() && c.hintKind in STORED_HINTS }?.let { id ->
+                openStored(s, c, id)?.let { return it }
+                // the hint degrades with a notice (gg: "That overview no longer exists; opened its commit")
+                onEdt {
+                    com.intellij.notification.NotificationGroupManager.getInstance().getNotificationGroup("GgNotes")
+                        .createNotification(dev.ggnotes.GgNotesBundle.message("steer.hintGone", c.hintKind.orEmpty(), id),
+                            com.intellij.notification.NotificationType.WARNING).notify(project)
+                }
+            }
             c.commit?.takeIf { it.isNotEmpty() }?.let { return showCommit(s, c, it) }
             if (!c.step.isNullOrEmpty()) return stepNote(s, c)
             return Reply.fail(c.id, "navigate needs a file, a commit or a step")
@@ -128,6 +138,36 @@ class SteerHandler(private val project: Project, private val service: SteerServi
         "commit" -> "$file is not at ${c.target.commit.orEmpty().take(7)}"
         "staged" -> "$file is not in the index"
         else -> "$file is not in the working tree"
+    }
+
+    private val STORED_HINTS = setOf("overview", "review")
+
+    /**
+     * Open the stored overview or review a link's hint names (gg's `hint_kind`/`hint_id`, the
+     * `?overview=<id>` / `?review=<id>` of a permanent document), in the tool window like a row
+     * click. gg's TUI replies `opened overview <id>` / `opened review <id>`; an id the store no
+     * longer has returns null, and the navigate degrades to the commit as the hint rule says.
+     */
+    private fun openStored(s: SteerService.RootSession, c: Command, id: String): Reply? {
+        val service = OverviewService.getInstance(project)
+        fun find(snapshot: dev.ggnotes.overview.Snapshot): Any? {
+            val model = snapshot.repos.firstOrNull { it.repo.root == s.repo.root }?.model ?: return null
+            return when (c.hintKind) {
+                "overview" -> model.commits.asSequence().flatMap { it.overviews }.firstOrNull { it.id == id }
+                else -> (model.commits.asSequence().flatMap { it.reviews } + model.working.asSequence().flatMap { it.reviews })
+                    .firstOrNull { it.id == id }
+            }
+        }
+        // the polled snapshot first; a miss re-reads the store, the document may be seconds old
+        val found = find(service.snapshot) ?: find(service.refreshSync()) ?: return null
+        onEdt {
+            when (found) {
+                is dev.ggnotes.store.Overview -> service.open(found, s.repo)
+                is dev.ggnotes.store.Review -> service.openReview(found, s.repo)
+            }
+            com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(OverviewService.TOOL_WINDOW_ID)?.show()
+        }
+        return Reply.ok(c.id, "opened ${c.hintKind} $id")
     }
 
     private fun showCommit(s: SteerService.RootSession, c: Command, sha: String): Reply {
