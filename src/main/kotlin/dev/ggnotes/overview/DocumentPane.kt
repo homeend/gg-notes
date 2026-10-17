@@ -92,7 +92,8 @@ class DocumentPane(private val project: Project, private val service: OverviewSe
             val top = AnchorScroll.target(
                 anchorY = rect.y, anchorHeight = rect.height,
                 viewTop = viewport.viewPosition.y, viewHeight = viewport.extentSize.height,
-                docHeight = pane.height) ?: return@invokeLater
+                // preferredSize lays the document out now; height could be the previous document's
+                docHeight = pane.preferredSize.height) ?: return@invokeLater
             viewport.viewPosition = Point(viewport.viewPosition.x, top)
         }, project.disposed)
     }
