@@ -15,9 +15,13 @@ import com.intellij.util.ui.UIUtil
 import dev.ggnotes.GgNotesBundle
 import dev.ggnotes.store.DocumentResult
 import java.awt.BorderLayout
+import java.awt.Point
+import java.awt.Rectangle
 import java.time.format.DateTimeFormatter
 import javax.swing.JEditorPane
 import javax.swing.JPanel
+import javax.swing.text.html.HTML
+import javax.swing.text.html.HTMLDocument
 import javax.swing.event.HyperlinkEvent
 
 /**
@@ -75,10 +79,36 @@ class DocumentPane(private val project: Project, private val service: OverviewSe
         ApplicationManager.getApplication().invokeLater({ scroll.verticalScrollBar.value = keep }, project.disposed)
     }
 
+    /**
+     * Bring anchor [n] on screen with a few lines of context above it (the heading or sentence
+     * it sits in); a pane that already shows it stays put. `scrollToReference` would pin the
+     * anchor to the top edge and hide what it belongs to.
+     */
     fun scrollToAnchor(n: Int) {
         ApplicationManager.getApplication().invokeLater({
-            if (shown != null) pane.scrollToReference("a$n")
+            if (shown == null) return@invokeLater
+            val rect = anchorBounds(n) ?: return@invokeLater
+            val viewport = scroll.viewport
+            val top = AnchorScroll.target(
+                anchorY = rect.y, anchorHeight = rect.height,
+                viewTop = viewport.viewPosition.y, viewHeight = viewport.extentSize.height,
+                // preferredSize lays the document out now; height could be the previous document's
+                docHeight = pane.preferredSize.height) ?: return@invokeLater
+            viewport.viewPosition = Point(viewport.viewPosition.x, top)
         }, project.disposed)
+    }
+
+    /** The on-screen box of the `<a name="aN">` marker the renderer puts before anchor [n]. */
+    private fun anchorBounds(n: Int): Rectangle? {
+        val doc = pane.document as? HTMLDocument ?: return null
+        val it = doc.getIterator(HTML.Tag.A)
+        while (it.isValid) {
+            if (it.attributes.getAttribute(HTML.Attribute.NAME) == "a$n") {
+                return runCatching { pane.modelToView2D(it.startOffset)?.bounds }.getOrNull()
+            }
+            it.next()
+        }
+        return null
     }
 
     private fun css(): String {

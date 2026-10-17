@@ -66,8 +66,10 @@ class GgNotesStartupActivity : ProjectActivity {
             }
             tw.activate({
                 opener()
+                // ggnotes.demo.anchor = which anchor the demo goes to (default 1)
+                val anchor = System.getProperty("ggnotes.demo.anchor")?.toIntOrNull() ?: 1
                 AppExecutorUtil.getAppScheduledExecutorService().schedule({
-                    ApplicationManager.getApplication().invokeLater({ service.goToAnchor(1) }, project.disposed)
+                    ApplicationManager.getApplication().invokeLater({ service.goToAnchor(anchor) }, project.disposed)
                 }, 3, TimeUnit.SECONDS)
                 System.getProperty("ggnotes.demo.shot")?.let { path ->
                     AppExecutorUtil.getAppScheduledExecutorService().schedule({

@@ -14,7 +14,7 @@ group = "dev.ggnotes"
 val gitShortSha = providers.exec {
     commandLine("git", "rev-parse", "--short", "HEAD")
 }.standardOutput.asText.map { it.trim() }
-version = "0.2.1+" + runCatching { gitShortSha.get().ifEmpty { "dev" } }.getOrDefault("dev")
+version = "0.2.2+" + runCatching { gitShortSha.get().ifEmpty { "dev" } }.getOrDefault("dev")
 
 repositories {
     mavenCentral()
@@ -119,6 +119,8 @@ fun org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask.acceptanceDefaults()
         if (shot.isNotBlank()) systemProperty("ggnotes.demo.shot", shot)
         // -Pggnotes.demoKind=review|notes opens that row kind instead of the first overview
         providers.gradleProperty("ggnotes.demoKind").orNull?.let { systemProperty("ggnotes.demo.kind", it) }
+        // -Pggnotes.demoAnchor=N goes to anchor N instead of the first one
+        providers.gradleProperty("ggnotes.demoAnchor").orNull?.let { systemProperty("ggnotes.demo.anchor", it) }
     }
 }
 tasks.named<org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask>("runIde") { acceptanceDefaults() }
