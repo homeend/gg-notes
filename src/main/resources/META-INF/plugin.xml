@@ -23,6 +23,13 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.2.4</h3>
+        <ul>
+            <li>The notes tree above the document takes only the height its rows need, up to a
+                third of the tool window; a longer list scrolls inside that share. Dragging the
+                divider keeps your size for the session.</li>
+        </ul>
+
         <h3>0.2.3</h3>
         <ul>
             <li><code>gg session navigate &lt;gg://…?overview=&lt;id&gt;&gt; --to ide</code> opens the
