@@ -23,6 +23,13 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.2.3</h3>
+        <ul>
+            <li><code>gg session navigate &lt;gg://…?overview=&lt;id&gt;&gt; --to ide</code> opens the
+                stored overview in the tool window (a <code>?review=</code> link opens the review),
+                as gg's own window does, instead of only revealing the commit.</li>
+        </ul>
+
         <h3>0.2.2</h3>
         <ul>
             <li>When an anchor becomes current, the overview keeps a few lines of context above

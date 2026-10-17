@@ -128,6 +128,19 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
             waitFor("reply $id") { Files.isRegularFile(ide.resolve("reply-$id.json")) }
             return com.google.gson.JsonParser.parseString(Files.readString(ide.resolve("reply-$id.json"))).asJsonObject
         }
+        // step 2-0: a stored document's link (`gg://…@<sha>?overview=<id>` / `?review=<id>`, gg's hint fields)
+        // opens the document itself in the tool window, as gg's TUI does; a gone id degrades to the commit
+        val storedOverview = post("2-0a", """{"id":"2-0a","cmd":"navigate","commit":"$sha","hint_kind":"overview","hint_id":"7cf0812f","wait":true}""")
+        assertEquals(storedOverview.toString(), "opened overview 7cf0812f", storedOverview.get("detail")?.asString)
+        assertEquals("7cf0812f", OverviewService.getInstance(project).open?.overview?.id)
+        assertEquals("", OverviewService.getInstance(project).open?.overview?.viewKind)
+        val storedReview = post("2-0b", """{"id":"2-0b","cmd":"navigate","commit":"$sha","hint_kind":"review","hint_id":"c0ffee01","wait":true}""")
+        assertEquals(storedReview.toString(), "opened review c0ffee01", storedReview.get("detail")?.asString)
+        assertEquals("review:c0ffee01:", OverviewService.getInstance(project).open?.overview?.viewKind)
+        val goneOverview = post("2-0c", """{"id":"2-0c","cmd":"navigate","commit":"$sha","hint_kind":"overview","hint_id":"deadbeef","wait":true}""")
+        assertEquals(goneOverview.toString(), "revealed commit ${sha.take(7)}", goneOverview.get("detail")?.asString)
+        assertEquals("the shown document stays", "review:c0ffee01:", OverviewService.getInstance(project).open?.overview?.viewKind)
+
         val atCommit = post("2-1", """{"id":"2-1","cmd":"navigate","file":"internal/x/gate.go","target":{"state":"commit","commit":"$sha"},"line":{"side":"new","no":4},"wait":true}""")
         assertEquals("opened internal/x/gate.go:4", atCommit.get("detail").asString)
         val revisionFile = FileEditorManager.getInstance(project).selectedFiles.single()
