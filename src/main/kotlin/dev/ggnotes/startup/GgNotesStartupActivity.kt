@@ -69,7 +69,11 @@ class GgNotesStartupActivity : ProjectActivity {
                 // ggnotes.demo.anchor = which anchor the demo goes to (default 1)
                 val anchor = System.getProperty("ggnotes.demo.anchor")?.toIntOrNull() ?: 1
                 AppExecutorUtil.getAppScheduledExecutorService().schedule({
-                    ApplicationManager.getApplication().invokeLater({ service.goToAnchor(anchor) }, project.disposed)
+                    ApplicationManager.getApplication().invokeLater({
+                        service.goToAnchor(anchor)
+                        // ggnotes.demo.documentOnly = hide the list (the toolbar toggle) before the shot
+                        if (System.getProperty("ggnotes.demo.documentOnly") == "true") service.setListHidden(true)
+                    }, project.disposed)
                 }, 3, TimeUnit.SECONDS)
                 System.getProperty("ggnotes.demo.shot")?.let { path ->
                     // ggnotes.demo.delay = seconds before the shot (default 9; longer when a script steers the IDE first)

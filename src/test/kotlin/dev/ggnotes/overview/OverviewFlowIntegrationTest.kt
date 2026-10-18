@@ -586,6 +586,35 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         }
     }
 
+    /** The toolbar's "Document Only" toggle: the service flips its flag and tells the panel to hide or show the list. */
+    fun testDocumentOnlyToggleHidesAndShowsTheList() {
+        val service = OverviewService.getInstance(project)
+        val calls = ArrayList<Boolean>()
+        val previous = service.ui
+        service.ui = object : OverviewUi {
+            override fun showOverview(open: OpenOverview?) = Unit
+            override fun showAnchor(n: Int) = Unit
+            override fun showList(visible: Boolean) { calls += visible }
+        }
+        try {
+            assertFalse(service.listHidden)
+            val action = DocumentOnlyAction()
+            val context = com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project)
+            val press = com.intellij.testFramework.TestActionEvent.createTestEvent(action, context)
+            action.actionPerformed(press)
+            assertTrue("hidden after the first press", service.listHidden)
+            val shown = com.intellij.testFramework.TestActionEvent.createTestEvent(action, context)
+            action.update(shown)
+            assertTrue("the button shows as pressed", com.intellij.openapi.actionSystem.Toggleable.isSelected(shown.presentation))
+            assertEquals("Show List", shown.presentation.text)
+            action.actionPerformed(press)
+            assertFalse("the list is back after the second press", service.listHidden)
+            assertEquals(listOf(false, true), calls)
+        } finally {
+            service.ui = previous
+        }
+    }
+
     private fun write(rel: String, text: String) {
         val f = File(repoDir, rel)
         f.parentFile.mkdirs()

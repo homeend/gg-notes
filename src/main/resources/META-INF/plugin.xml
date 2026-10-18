@@ -23,6 +23,12 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.2.8</h3>
+        <ul>
+            <li>A <b>Document Only</b> toggle on the tool window's toolbar hides the list so the
+                document takes the whole window; press it again to show the list.</li>
+        </ul>
+
         <h3>0.2.7</h3>
         <ul>
             <li>The tree's context menu item is now <b>Delete</b> on every row; the confirmation
@@ -121,12 +127,14 @@
             <keyboard-shortcut keymap="$default" first-keystroke="alt shift O"/>
         </action>
         <action id="GgNotes.Close" class="dev.ggnotes.overview.CloseOverviewAction"/>
+        <action id="GgNotes.DocumentOnly" class="dev.ggnotes.overview.DocumentOnlyAction"/>
         <group id="GgNotes.Toolbar">
             <reference ref="GgNotes.Refresh"/>
             <separator/>
             <reference ref="GgNotes.PreviousAnchor"/>
             <reference ref="GgNotes.NextAnchor"/>
             <separator/>
+            <reference ref="GgNotes.DocumentOnly"/>
             <reference ref="GgNotes.Close"/>
         </group>
     </actions>

@@ -51,6 +51,24 @@ class BackToOverviewAction : AnAction(AllIcons.Actions.PreviewDetails), DumbAwar
     }
 }
 
+/**
+ * "Document only": hide the list above the document so the document takes the whole tool
+ * window; press again to bring the list back. A plain action with [Toggleable] state, not a
+ * ToggleAction (CLAUDE.md: Find Action would render that as an On/Off switch).
+ */
+class DocumentOnlyAction : AnAction(AllIcons.General.FitContent), DumbAware, com.intellij.openapi.actionSystem.Toggleable {
+    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+    override fun update(e: AnActionEvent) {
+        val hidden = e.service()?.listHidden == true
+        com.intellij.openapi.actionSystem.Toggleable.setSelected(e.presentation, hidden)
+        e.presentation.text = dev.ggnotes.GgNotesBundle.message(if (hidden) "action.GgNotes.DocumentOnly.showList" else "action.GgNotes.DocumentOnly.text")
+    }
+    override fun actionPerformed(e: AnActionEvent) {
+        val s = e.service() ?: return
+        s.setListHidden(!s.listHidden)
+    }
+}
+
 /** Close the open overview: its remark boxes and bands leave the editors. */
 class CloseOverviewAction : AnAction(AllIcons.Actions.Close), DumbAware {
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
