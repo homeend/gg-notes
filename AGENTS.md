@@ -170,10 +170,8 @@ files `f<n>`, temporary notes `t<n>` with gg's exact-line re-anchoring,
 in-memory overviews). The IDE is reached only on `--to ide` (or
 `GG_SESSION_TO=ide`); gg's side of that lives on gigagit's `feat/steer-ide`
 branch and is independent of the plugin — develop against hand-written
-command files (PLUGIN.md §7) until that binary exists — it does now:
-`/work/gigagit/.claude/worktrees/steer-ide/bin/gg` has `--to ide`,
-`GG_SESSION_TO` and the `ide:` status line (unmerged; the installed `gg`
-lacks them). Conformance files in `docs/gg-steer/`: `command.schema.json`,
+command files (PLUGIN.md §7) or with the installed `gg`, which has `--to
+ide`, `GG_SESSION_TO` and the `ide:` status line since gigagit main 06860f0f. Conformance files in `docs/gg-steer/`: `command.schema.json`,
 `reply.schema.json`, `presence.schema.json` (validate leniently),
 `steer-cases.json` (run EVERY case against your handler, `ide_only` ones
 included), `reanchor-cases.json` (the eight re-anchoring cases),

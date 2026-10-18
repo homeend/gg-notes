@@ -1,7 +1,7 @@
 # gg live steering — the IDE as a third consumer
 
 > Copy of gigagit's `docs/superpowers/specs/2026-10-15-gg-steer-ide-consumer-design.md`
-> (branch `feat/steer-ide`, commit 4c249811). gigagit is the source of truth; refresh
+> (merged into gigagit `main` as 06860f0f). gigagit is the source of truth; refresh
 > this copy when that file changes. `PLUGIN.md` beside it is the plugin's
 > implementation spec derived from it; the `*.json` files and `README.md` are
 > gigagit's conformance material (`docs/specs/gg-steer/`).

@@ -4,10 +4,9 @@ Derived from `SPEC.md` (the protocol; binding where they differ). This file
 says what the PLUGIN builds, in the order to build it, with the exact
 on-disk behaviour an agent's `gg session … --to ide` relies on.
 
-The gg side (`--to ide`, `GG_SESSION_TO`) is being added on gigagit's
-`feat/steer-ide` branch. Until a gg with it is installed, develop against
-hand-written command files (§7) — the protocol is files, so nothing else is
-needed.
+The gg side (`--to ide`, `GG_SESSION_TO`) is in gigagit main (06860f0f) and
+the installed `gg`. Hand-written command files (§7) still work for tests —
+the protocol is files.
 
 ## 1. What the user gets
 
@@ -194,9 +193,8 @@ printf '%s' '{"id":"1-1","cmd":"navigate","file":"src/a.go","line":{"side":"new"
 cat $inbox/ide/reply-1-1.json                         # {"id":"1-1","ok":true,"detail":"opened src/a.go:3-4 at line 3"}
 ```
 
-`gg session … --to ide` does the same with a gg that has it: gigagit's
-`feat/steer-ide` branch (`/work/gigagit/.claude/worktrees/steer-ide/bin/gg`
-while it is unmerged; the installed `gg` once it is). Validate incoming
+`gg session … --to ide` does the same with the installed `gg` (gigagit main
+06860f0f or later). Validate incoming
 files leniently: the schemas leave the verb/state/side vocabularies open on
 purpose — dispatch on them and refuse unknown values with the prose above.
 
