@@ -23,6 +23,13 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.2.7</h3>
+        <ul>
+            <li>The tree's context menu item is now <b>Delete</b> on every row; the confirmation
+                still says what goes (gg's store for stored rows, only this IDE session for an
+                in-memory overview).</li>
+        </ul>
+
         <h3>0.2.6</h3>
         <ul>
             <li>In-memory overviews (<code>gg session overview add --to ide</code>) are rows of the

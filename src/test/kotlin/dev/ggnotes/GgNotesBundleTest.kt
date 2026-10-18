@@ -26,6 +26,13 @@ class GgNotesBundleTest {
     }
 
     @Test
+    fun `the tree's context menu says Delete on every row`() {
+        assertEquals("Delete", GgNotesBundle.message("action.GgNotes.RemoveFromStore.text"))
+        assertEquals("Delete", GgNotesBundle.message("action.GgNotes.RemoveFromSession.text"))
+        assertEquals("Delete", GgNotesBundle.message("remove.confirm.title"))
+    }
+
+    @Test
     fun `every value is non-blank and well-formed`() {
         val bundle = loadBundle()
         assertTrue("default bundle is empty", bundle.isNotEmpty())
