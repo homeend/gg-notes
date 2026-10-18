@@ -23,6 +23,15 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.2.6</h3>
+        <ul>
+            <li>In-memory overviews (<code>gg session overview add --to ide</code>) are rows of the
+                tool window: a <b>This session</b> group above the commits lists them, marked
+                <i>in memory</i> and <i>on screen</i>, with their anchor count and unresolved links.
+                Click one to show it, right-click to drop it from the session. They were never in
+                gg's store and vanish when the project closes.</li>
+        </ul>
+
         <h3>0.2.5</h3>
         <ul>
             <li>Right-click any row of the notes tree for <b>Remove from gg Store</b>: an overview,

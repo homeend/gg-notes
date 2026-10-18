@@ -426,36 +426,20 @@ class SteerHandler(private val project: Project, private val service: SteerServi
         end <= Lines.split(String(bytes, Charsets.UTF_8)).size
     }
 
-    /** The session overview as the overview viewer shows it: live anchors into the worktree, note anchors rewritten. */
-    private fun asOverview(s: SteerService.RootSession, o: SessionMemory.Overview): Overview {
-        val md = s.memory.viewerMarkdown(o)
-        return Overview(
-            id = o.id, title = o.title, author = "agent", commit = "", branch = "", preview = null, prNumber = null,
-            created = null, updated = OffsetDateTime.now(),
-            document = DocumentResult.Ok(OverviewDocument(o.title, md.ifBlank { "_(empty)_" }, emptyList())),
-            sourceFile = s.inbox, viewKind = "session:${o.id}:", liveWorktree = s.topLevel,
-        )
-    }
+    // the viewer form, the shown test and showing live in SteerService: the tool window's rows use them too
+    private fun isShown(s: SteerService.RootSession, o: SessionMemory.Overview): Boolean = service.isShown(s, o)
 
-    private fun isShown(s: SteerService.RootSession, o: SessionMemory.Overview): Boolean =
-        OverviewService.getInstance(project).open?.overview?.identity == asOverview(s, o).identity
-
-    private fun show(s: SteerService.RootSession, o: SessionMemory.Overview, keepAnchor: Boolean) {
-        val overview = asOverview(s, o)
-        onEdt {
-            val service = OverviewService.getInstance(project)
-            if (keepAnchor) service.openKeepingAnchor(overview, s.repo) else service.open(overview, s.repo)
-            com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(OverviewService.TOOL_WINDOW_ID)?.show()
-        }
-        s.memory.markShown(o.id)
-    }
+    private fun show(s: SteerService.RootSession, o: SessionMemory.Overview, keepAnchor: Boolean) = service.showOverview(s, o, keepAnchor)
 
     private fun overviewAdd(s: SteerService.RootSession, c: Command): Reply {
         val o = when (val r = s.memory.addOverview(c.title, c.text, resolver(s))) {
             is OverviewResult.Refused -> return Reply.fail(c.id, r.error)
             is OverviewResult.Ok -> r.overview
         }
-        if (c.background) return Reply.ok(c.id, "added ${o.id} in the background").withUnresolved(o)
+        if (c.background) {
+            service.sessionChanged()
+            return Reply.ok(c.id, "added ${o.id} in the background").withUnresolved(o)
+        }
         show(s, o, keepAnchor = false)
         return Reply.ok(c.id, "showing ${o.id}").withUnresolved(o)
     }
@@ -473,6 +457,7 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             show(s, o, keepAnchor = true)
             Reply.ok(c.id, "showing ${o.id}").withUnresolved(o)
         } else {
+            service.sessionChanged()
             Reply.ok(c.id, o.id).withUnresolved(o)
         }
     }
@@ -494,10 +479,7 @@ class SteerHandler(private val project: Project, private val service: SteerServi
 
     private fun overviewRm(s: SteerService.RootSession, c: Command): Reply {
         val id = c.fileId.orEmpty()
-        val o = s.memory.findOverview(id) ?: return Reply.fail(c.id, "no overview $id")
-        val shown = isShown(s, o)
-        s.memory.removeOverview(id)
-        if (shown) onEdt { OverviewService.getInstance(project).close() }
+        if (!service.removeOverview(s, id)) return Reply.fail(c.id, "no overview $id")
         return Reply.ok(c.id, "closed $id")
     }
 

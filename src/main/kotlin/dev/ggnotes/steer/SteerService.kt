@@ -141,6 +141,70 @@ class SteerService(private val project: Project) : Disposable {
 
     fun allSessions(): Collection<RootSession> = sessions.values
 
+    // ---- in-memory overviews as the tool window sees them --------------------------------
+
+    /** One row of the tool window's "this session" group: an in-memory overview and whether it is on screen. */
+    class SessionRow(val session: RootSession, val overview: SessionMemory.Overview, val shown: Boolean)
+
+    private val sessionListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    /** Told (on any thread) whenever an in-memory overview is added, replaced, shown or removed. */
+    fun addSessionListener(parent: Disposable, listener: () -> Unit) {
+        sessionListeners.add(listener)
+        com.intellij.openapi.util.Disposer.register(parent) { sessionListeners.remove(listener) }
+    }
+
+    fun sessionChanged() {
+        for (l in sessionListeners) runCatching { l() }.onFailure { LOG.warn("GgNotes steer: session listener", it) }
+    }
+
+    /** The in-memory overviews of [root], in creation order; empty when the root has no session (yet). */
+    fun sessionOverviews(root: VirtualFile): List<SessionRow> {
+        val s = sessions[root.path] ?: return emptyList()
+        return s.memory.overviews().map { SessionRow(s, it, isShown(s, it)) }
+    }
+
+    /** The session overview as the overview viewer shows it: live anchors into the worktree, note anchors rewritten. */
+    fun viewerOverview(s: RootSession, o: SessionMemory.Overview): dev.ggnotes.store.Overview {
+        val md = s.memory.viewerMarkdown(o)
+        return dev.ggnotes.store.Overview(
+            id = o.id, title = o.title, author = "agent", commit = "", branch = "", preview = null, prNumber = null,
+            created = null, updated = java.time.OffsetDateTime.now(),
+            document = dev.ggnotes.store.DocumentResult.Ok(dev.ggnotes.store.OverviewDocument(o.title, md.ifBlank { "_(empty)_" }, emptyList())),
+            sourceFile = s.inbox, viewKind = "session:${o.id}:", liveWorktree = s.topLevel,
+        )
+    }
+
+    fun isShown(s: RootSession, o: SessionMemory.Overview): Boolean =
+        dev.ggnotes.overview.OverviewService.getInstance(project).open?.overview?.identity == viewerOverview(s, o).identity
+
+    /** Open [o] in the tool window, synchronously on the EDT; [keepAnchor] is `overview_set`'s in-place path. */
+    fun showOverview(s: RootSession, o: SessionMemory.Overview, keepAnchor: Boolean) {
+        val overview = viewerOverview(s, o)
+        onEdt {
+            val service = dev.ggnotes.overview.OverviewService.getInstance(project)
+            if (keepAnchor) service.openKeepingAnchor(overview, s.repo) else service.open(overview, s.repo)
+            com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(dev.ggnotes.overview.OverviewService.TOOL_WINDOW_ID)?.show()
+        }
+        s.memory.markShown(o.id)
+        sessionChanged()
+    }
+
+    /** Drop in-memory overview [id] (the tree's Remove, `overview_rm`): closes its document when it is on screen. */
+    fun removeOverview(s: RootSession, id: String): Boolean {
+        val o = s.memory.findOverview(id) ?: return false
+        val shown = isShown(s, o)
+        s.memory.removeOverview(id)
+        if (shown) onEdt { dev.ggnotes.overview.OverviewService.getInstance(project).close() }
+        sessionChanged()
+        return true
+    }
+
+    private fun onEdt(block: () -> Unit) {
+        val app = com.intellij.openapi.application.ApplicationManager.getApplication()
+        if (app.isDispatchThread) { if (!project.isDisposed) block() } else app.invokeAndWait { if (!project.isDisposed) block() }
+    }
+
     /** Every second: keep presence fresh, and publish it for roots git4idea detected after project open. */
     private fun touchAll() {
         if (project.isDisposed) return

@@ -69,6 +69,12 @@ upload.
   `RemarkOverlay.box`, debounced re-anchoring). A session overview opens
   through `OverviewService` with `viewKind = session:f<n>:` and
   `liveWorktree`; `openKeepingAnchor` is `overview_set`'s in-place path.
+  The viewer form, the shown test, show and remove live on `SteerService`
+  (`viewerOverview`, `isShown`, `showOverview`, `removeOverview`) because
+  the tool window uses them too: `sessionOverviews(root)` feeds its "This
+  session · in memory" group and `addSessionListener` triggers its rebuild
+  (`sessionChanged()` after every add/set/show/rm). Nothing of this is
+  persisted or on the wire: the rows go with the project.
 - `SteerService.start()` is a no-op in unit-test mode: tests publish
   presence only via `startSync()` under a temp `XDG_STATE_HOME` set BEFORE
   `super.setUp()`, so the suite never writes into the live state dir.

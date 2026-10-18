@@ -62,6 +62,12 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     private class FileNode(val file: FileEntry, val commit: String, val worktree: String?, val repo: GitRepository)
     private class ThreadNode(val thread: NoteThread, val commit: String, val worktree: String?, val repo: GitRepository)
     private class ReplyNode(val reply: NoteRecord)
+    /** "This session": the in-memory overviews an agent added over the steer inbox (gone with the project). */
+    private class SessionGroupNode(val repo: GitRepository)
+    /** [identity] is the viewer form's identity, so "on screen" is judged at paint time against the open document. */
+    private class SessionOverviewNode(val row: dev.ggnotes.steer.SteerService.SessionRow, val repo: GitRepository, val identity: String)
+
+    private val steer = dev.ggnotes.steer.SteerService.getInstance(project)
 
     private companion object {
         /** Unscaled px around the rows: the scroll pane's border and a little air under the last row. */
@@ -92,6 +98,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
                 is ReplyNode -> (node.parent as? DefaultMutableTreeNode)?.userObject.let { p ->
                     if (p is ThreadNode) service.openNotes(listOf(p.thread), p.thread.root.address.path, p.commit, p.worktree, p.repo)
                 }
+                is SessionOverviewNode -> steer.showOverview(u.row.session, u.row.overview, keepAnchor = false)
                 else -> Unit
             }
         }
@@ -135,6 +142,9 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
 
         service.ui = this
         service.addSnapshotListener(this) { rebuild() }
+        steer.addSessionListener(this) {
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater({ rebuild() }, project.disposed)
+        }
         rebuild()
         service.refresh()
         service.open?.let { showOverview(it) }
@@ -149,6 +159,13 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         val multi = snapshot.repos.size > 1
         for (repo in snapshot.repos) {
             val parent = if (multi) DefaultMutableTreeNode(RepoNode(repo.repo)).also { root.add(it) } else root
+            // in-memory overviews first: they are what the agent is showing right now, and they outlive nothing
+            val sessionRows = steer.sessionOverviews(repo.repo.root)
+            if (sessionRows.isNotEmpty()) {
+                val sn = DefaultMutableTreeNode(SessionGroupNode(repo.repo))
+                parent.add(sn)
+                for (row in sessionRows) sn.add(DefaultMutableTreeNode(SessionOverviewNode(row, repo.repo, steer.viewerOverview(row.session, row.overview).identity)))
+            }
             repo.error?.let { messages += it }
             repo.contents.problems.forEach { messages += "${repo.repo.root.name}: $it" }
             if (repo.contents.newerFormat) messages += GgNotesBundle.message("toolwindow.newerFormat", repo.repo.root.name)
@@ -226,11 +243,24 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
 
         override fun update(e: com.intellij.openapi.actionSystem.AnActionEvent) {
             val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
-            e.presentation.isEnabledAndVisible = node != null && planFor(node)?.first?.lines?.isNotEmpty() == true
+            val session = node?.userObject is SessionOverviewNode
+            e.presentation.isEnabledAndVisible = node != null && (session || planFor(node)?.first?.lines?.isNotEmpty() == true)
+            // an in-memory row promises no store deletion, and the label says so
+            e.presentation.text = GgNotesBundle.message(if (session) "action.GgNotes.RemoveFromSession.text" else "action.GgNotes.RemoveFromStore.text")
         }
 
         override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) {
             val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return
+            (node.userObject as? SessionOverviewNode)?.let { u ->
+                // an in-memory overview: nothing is in gg's store, the drop is the session's own (`overview_rm`)
+                val answer = com.intellij.openapi.ui.Messages.showYesNoDialog(
+                    project, GgNotesBundle.message("remove.confirm.SESSION", u.row.overview.title, u.row.overview.id),
+                    GgNotesBundle.message("remove.confirm.title"),
+                    GgNotesBundle.message("action.GgNotes.RemoveFromSession.text"), com.intellij.openapi.ui.Messages.getCancelButton(),
+                    com.intellij.openapi.ui.Messages.getQuestionIcon())
+                if (answer == com.intellij.openapi.ui.Messages.YES) steer.removeOverview(u.row.session, u.row.overview.id)
+                return
+            }
             val (plan, repo) = planFor(node) ?: return
             val question = GgNotesBundle.message("remove.confirm.${plan.kind.name}", plan.label, plan.records) + "\n\n" +
                 GgNotesBundle.message("remove.confirm.note")
@@ -256,12 +286,14 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     private fun identityOf(u: Any?): String? = when (u) {
         is OverviewNode -> u.overview.identity
         is ReviewNode -> "review:${u.review.id}:" + (u.review.record.prNumber?.let { "pr:$it" } ?: u.review.record.address.commit) + "\u0000" + u.review.title.trim()
+        is SessionOverviewNode -> u.identity
         else -> null
     }
 
     private fun repoOf(u: Any?): GitRepository? = when (u) {
         is OverviewNode -> u.repo
         is ReviewNode -> u.repo
+        is SessionOverviewNode -> u.repo
         else -> null
     }
 
@@ -278,6 +310,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     override fun showOverview(open: OpenOverview?) {
         document.show(open)
         if (open != null) selectIdentity(open.overview.identity, open.repo)
+        tree.repaint() // the session rows' "on screen" badge follows the open document
     }
 
     override fun showAnchor(n: Int) = document.scrollToAnchor(n)
@@ -288,12 +321,27 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
 
     private fun escape(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    private class Renderer : ColoredTreeCellRenderer() {
+    private inner class Renderer : ColoredTreeCellRenderer() {
         private val date = DateTimeFormatter.ISO_LOCAL_DATE
 
         override fun customizeCellRenderer(tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean) {
             when (val u = (value as? DefaultMutableTreeNode)?.userObject) {
                 is RepoNode -> append(u.repo.root.name, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                is SessionGroupNode -> {
+                    append(GgNotesBundle.message("toolwindow.session"), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                    append("  " + GgNotesBundle.message("toolwindow.inMemory"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+                    toolTipText = GgNotesBundle.message("toolwindow.session.tooltip")
+                }
+                is SessionOverviewNode -> {
+                    val o = u.row.overview
+                    append(o.title.ifBlank { "(untitled)" }, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                    append("  " + listOf(o.id, GgNotesBundle.message("document.anchors", o.anchors.size)).joinToString(" · "), SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    append("  " + GgNotesBundle.message("toolwindow.inMemory"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+                    // judged now, not at build time: Close or another row's click changes it without a rebuild
+                    if (service.open?.overview?.identity == u.identity) append("  " + GgNotesBundle.message("toolwindow.shown"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+                    if (o.unresolved.isNotEmpty()) append("  ⚠ " + GgNotesBundle.message("toolwindow.unresolved", o.unresolved.size), SimpleTextAttributes.ERROR_ATTRIBUTES)
+                    toolTipText = GgNotesBundle.message("toolwindow.session.tooltip")
+                }
                 is GroupNode -> {
                     append(u.entry.shortSha, SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
                     append("  ")

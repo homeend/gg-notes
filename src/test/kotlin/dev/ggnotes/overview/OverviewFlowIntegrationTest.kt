@@ -535,6 +535,48 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         assertNull("the document that showed the removed overview is closed", service.open)
     }
 
+    /**
+     * In-memory overviews (`gg session overview add --to ide`) are rows of the tool window too:
+     * the steer service lists them per git root with their shown state, tells the panel when
+     * they change, and drops them on `overview_rm` (and with the project, nothing is stored).
+     */
+    fun testSessionOverviewsAreListedForTheTreeAndVanishWhenRemoved() {
+        val steer = dev.ggnotes.steer.SteerService.getInstance(project)
+        val session = ApplicationManager.getApplication().executeOnPooledThread<List<dev.ggnotes.steer.SteerService.RootSession>> { steer.startSync() }.get().single()
+        val ide = session.ideDir
+        var changes = 0
+        steer.addSessionListener(testRootDisposable) { changes++ }
+        fun post(id: String, body: String): com.google.gson.JsonObject {
+            Files.writeString(ide.resolve(".tmp-$id"), body)
+            Files.move(ide.resolve(".tmp-$id"), ide.resolve("cmd-$id.json"))
+            waitFor("reply $id") { Files.isRegularFile(ide.resolve("reply-$id.json")) }
+            return com.google.gson.JsonParser.parseString(Files.readString(ide.resolve("reply-$id.json"))).asJsonObject
+        }
+        assertEquals(emptyList<String>(), steer.sessionOverviews(root).map { it.overview.id })
+
+        val shown = post("7-1", """{"id":"7-1","cmd":"overview_add","title":"Tour","text":"- [gate](internal/x/gate.go:3)","wait":true}""")
+        val shownId = Regex("showing (f\\d+)").find(shown.get("detail").asString)!!.groupValues[1]
+        val quiet = post("7-2", """{"id":"7-2","cmd":"overview_add","title":"Quiet","text":"nothing","background":true,"wait":true}""")
+        val quietId = Regex("added (f\\d+) in the background").find(quiet.get("detail").asString)!!.groupValues[1]
+        waitFor("rows") { steer.sessionOverviews(root).size == 2 }
+        val rows = steer.sessionOverviews(root)
+        assertEquals(listOf(shownId to "Tour", quietId to "Quiet"), rows.map { it.overview.id to it.overview.title })
+        assertEquals("the one on screen is marked shown", listOf(true, false), rows.map { it.shown })
+        assertTrue("the panel was told", changes >= 2)
+        assertEquals("session:$shownId:", steer.viewerOverview(session, rows[0].overview).viewKind)
+
+        val before = changes
+        assertEquals("closed $shownId", post("7-3", """{"id":"7-3","cmd":"overview_rm","file_id":"$shownId","wait":true}""").get("detail").asString)
+        waitFor("row gone") { steer.sessionOverviews(root).map { it.overview.id } == listOf(quietId) }
+        assertTrue(changes > before)
+        assertNull("the removed overview's document closed", OverviewService.getInstance(project).open)
+
+        // the IDE-side removal (the tree's context menu) is the same drop
+        assertTrue(steer.removeOverview(session, quietId))
+        assertEquals(emptyList<String>(), steer.sessionOverviews(root).map { it.overview.id })
+        assertFalse(steer.removeOverview(session, quietId))
+    }
+
     private fun waitFor(what: String, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + 20_000
         while (!condition()) {

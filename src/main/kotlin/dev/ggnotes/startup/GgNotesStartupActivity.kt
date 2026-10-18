@@ -72,9 +72,11 @@ class GgNotesStartupActivity : ProjectActivity {
                     ApplicationManager.getApplication().invokeLater({ service.goToAnchor(anchor) }, project.disposed)
                 }, 3, TimeUnit.SECONDS)
                 System.getProperty("ggnotes.demo.shot")?.let { path ->
+                    // ggnotes.demo.delay = seconds before the shot (default 9; longer when a script steers the IDE first)
+                    val delay = System.getProperty("ggnotes.demo.delay")?.toLongOrNull() ?: 9L
                     AppExecutorUtil.getAppScheduledExecutorService().schedule({
                         ApplicationManager.getApplication().invokeLater({ paintFrame(project, path) }, project.disposed)
-                    }, 9, TimeUnit.SECONDS)
+                    }, delay, TimeUnit.SECONDS)
                 }
             }, true)
         }
