@@ -26,6 +26,12 @@ class GgNotesBundleTest {
     }
 
     @Test
+    fun `the tool window is shown as Overviews while its id stays GgNotes`() {
+        // the platform reads the stripe title of tool window <id> from the plugin bundle key toolwindow.stripe.<id>
+        assertEquals("Overviews", GgNotesBundle.message("toolwindow.stripe.GgNotes"))
+    }
+
+    @Test
     fun `the tree's context menu says Delete on every row`() {
         assertEquals("Delete", GgNotesBundle.message("action.GgNotes.RemoveFromStore.text"))
         assertEquals("Delete", GgNotesBundle.message("action.GgNotes.RemoveFromSession.text"))

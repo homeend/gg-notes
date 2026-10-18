@@ -23,6 +23,12 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.2.9</h3>
+        <ul>
+            <li>The tool window is shown as <b>Overviews</b> on the stripe and in its header. Its id
+                stays <code>GgNotes</code>, so saved layouts keep working.</li>
+        </ul>
+
         <h3>0.2.8</h3>
         <ul>
             <li>A <b>Document Only</b> toggle on the tool window's toolbar hides the list so the
@@ -107,7 +113,8 @@
     <extensions defaultExtensionNs="com.intellij">
         <notificationGroup id="GgNotes" displayType="BALLOON"/>
         <postStartupActivity implementation="dev.ggnotes.startup.GgNotesStartupActivity"/>
-        <!-- The id is user-visible (stripe title) and frozen like the plugin name. -->
+        <!-- The id is frozen like the plugin name (layouts and code refer to it); the visible stripe
+             title comes from the bundle key toolwindow.stripe.GgNotes ("Overviews"). -->
         <toolWindow id="GgNotes"
                     anchor="right"
                     doNotActivateOnStart="true"
