@@ -86,6 +86,8 @@ class OpenOverview(val overview: Overview, val repo: GitRepository, rendered: Re
 interface OverviewUi {
     fun showOverview(open: OpenOverview?)
     fun showAnchor(n: Int)
+    /** Show or hide the list above the document; hidden, the document takes the whole tool window. */
+    fun showList(visible: Boolean)
 }
 
 /**
@@ -111,6 +113,15 @@ class OverviewService(private val project: Project) : Disposable {
         private set
 
     @Volatile var ui: OverviewUi? = null
+
+    /** "Document only": the list above the document is hidden (toolbar toggle; per project, not persisted). */
+    @Volatile var listHidden: Boolean = false
+        private set
+
+    fun setListHidden(hidden: Boolean) {
+        listHidden = hidden
+        ui?.showList(!hidden)
+    }
 
     private val snapshotListeners = CopyOnWriteArrayList<() -> Unit>()
     private val subjects = ConcurrentHashMap<String, java.util.Optional<String>>() // "root|sha" -> subject

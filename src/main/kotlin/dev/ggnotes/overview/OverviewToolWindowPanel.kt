@@ -50,6 +50,8 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     private val status = JBLabel()
     private val document = DocumentPane(project, service)
     private val splitter = OnePixelSplitter(true, TreeShare.MAX_SHARE)
+    /** The list half: status line plus tree; detached from the splitter in "document only" mode. */
+    private val listPane = JPanel(BorderLayout())
     private var syncing = false
     /** Set by a drag on the divider: from then on the user's size stands and [fitTree] stays out. */
     private var userSized = false
@@ -118,11 +120,10 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
 
         status.border = JBUI.Borders.empty(4, 8)
         status.isVisible = false
-        val top = JPanel(BorderLayout())
-        top.add(status, BorderLayout.NORTH)
-        top.add(ScrollPaneFactory.createScrollPane(tree), BorderLayout.CENTER)
+        listPane.add(status, BorderLayout.NORTH)
+        listPane.add(ScrollPaneFactory.createScrollPane(tree), BorderLayout.CENTER)
 
-        splitter.firstComponent = top
+        splitter.firstComponent = if (service.listHidden) null else listPane
         splitter.secondComponent = document
         setContent(splitter)
         // the tree takes what its rows need, up to TreeShare.MAX_SHARE of the window, until the user drags the divider
@@ -206,7 +207,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
      * of the window so a long list scrolls inside it. Stops once the user drags the divider.
      */
     private fun fitTree() {
-        if (userSized || splitter.height <= 0) return
+        if (userSized || splitter.height <= 0 || splitter.firstComponent == null) return
         val rows = tree.rowCount
         val rowsHeight = if (rows > 0) tree.getRowBounds(rows - 1)?.let { it.y + it.height } ?: rows * tree.rowHeight else 0
         val statusHeight = if (status.isVisible) status.preferredSize.height else 0
@@ -310,10 +311,21 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     override fun showOverview(open: OpenOverview?) {
         document.show(open)
         if (open != null) selectIdentity(open.overview.identity, open.repo)
+        // "document only" with no document would show only the placeholder: bring the list back
+        if (open == null && service.listHidden) service.setListHidden(false)
         tree.repaint() // the session rows' "on screen" badge follows the open document
     }
 
     override fun showAnchor(n: Int) = document.scrollToAnchor(n)
+
+    override fun showList(visible: Boolean) {
+        val shown = splitter.firstComponent != null
+        if (shown == visible) return
+        splitter.firstComponent = if (visible) listPane else null
+        splitter.revalidate()
+        splitter.repaint()
+        if (visible) fitTree()
+    }
 
     override fun dispose() {
         if (service.ui === this) service.ui = null

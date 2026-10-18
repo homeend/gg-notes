@@ -14,7 +14,7 @@ group = "dev.ggnotes"
 val gitShortSha = providers.exec {
     commandLine("git", "rev-parse", "--short", "HEAD")
 }.standardOutput.asText.map { it.trim() }
-version = "0.2.7+" + runCatching { gitShortSha.get().ifEmpty { "dev" } }.getOrDefault("dev")
+version = "0.2.8+" + runCatching { gitShortSha.get().ifEmpty { "dev" } }.getOrDefault("dev")
 
 repositories {
     mavenCentral()
@@ -123,6 +123,8 @@ fun org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask.acceptanceDefaults()
         providers.gradleProperty("ggnotes.demoAnchor").orNull?.let { systemProperty("ggnotes.demo.anchor", it) }
         // -Pggnotes.demoDelay=S takes the shot S seconds after the tool window opened (default 9)
         providers.gradleProperty("ggnotes.demoDelay").orNull?.let { systemProperty("ggnotes.demo.delay", it) }
+        // -Pggnotes.demoDocumentOnly=true hides the list before the shot (the Document Only toggle)
+        providers.gradleProperty("ggnotes.demoDocumentOnly").orNull?.let { systemProperty("ggnotes.demo.documentOnly", it) }
     }
 }
 tasks.named<org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask>("runIde") { acceptanceDefaults() }
