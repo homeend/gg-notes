@@ -167,11 +167,12 @@ Not in the store (SPEC-part2 §7): GitHub comments — a PR comment view needs
 presence (`ide.json`, touched every 1 s), the `ide/` sub-inbox drain, the
 verb handler with gg's exact reply prose, and the session memory (open
 files `f<n>`, temporary notes `t<n>` with gg's exact-line re-anchoring,
-in-memory overviews). The IDE is reached only on `--to ide` (or
-`GG_SESSION_TO=ide`); gg's side of that lives on gigagit's `feat/steer-ide`
-branch and is independent of the plugin — develop against hand-written
-command files (PLUGIN.md §7) or with the installed `gg`, which has `--to
-ide`, `GG_SESSION_TO` and the `ide:` status line since gigagit main 06860f0f. Conformance files in `docs/gg-steer/`: `command.schema.json`,
+in-memory overviews). A bare `gg session <verb>` reaches the IDE when it is
+the only live side (gigagit main 69c01a9a, 2026-10-18; before that, only
+`--to ide` or `GG_SESSION_TO=ide` did); while a gg TUI or web page is live
+they keep the verb and `--to ide` picks the IDE. gg's side is independent
+of the plugin — develop against hand-written command files (PLUGIN.md §7)
+or with the installed `gg`. Conformance files in `docs/gg-steer/`: `command.schema.json`,
 `reply.schema.json`, `presence.schema.json` (validate leniently),
 `steer-cases.json` (run EVERY case against your handler, `ide_only` ones
 included), `reanchor-cases.json` (the eight re-anchoring cases),
