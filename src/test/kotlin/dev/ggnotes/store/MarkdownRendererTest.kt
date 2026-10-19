@@ -69,8 +69,13 @@ class MarkdownRendererTest {
     @Test
     fun `a newline inside a paragraph is a hard break also in tight list items`() {
         val r = render("line one\nline two\n\n- item a\n  continued\n- item b")
-        assertTrue(r.html, Regex("line one<br ?/?>\\s*line two").containsMatchIn(r.html))
+        // a top-level paragraph's hard break starts a new block (class br: a little air, less than a paragraph's)
+        assertTrue(r.html, Regex("line one</p>\\s*<p class=\"br\">line two").containsMatchIn(r.html))
+        assertFalse(r.html, Regex("line one<br ?/?>").containsMatchIn(r.html))
+        // inside a list item the break stays a <br>
         assertTrue(r.html, Regex("item a<br ?/?>\\s*continued").containsMatchIn(r.html))
+        val quoted = render("> q one\n> q two")
+        assertTrue(quoted.html, Regex("q one<br ?/?>\\s*q two").containsMatchIn(quoted.html))
     }
 
     @Test

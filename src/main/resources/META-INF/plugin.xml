@@ -23,6 +23,14 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.3.2</h3>
+        <ul>
+            <li>The document breathes: paragraphs, headings, lists and code blocks have space
+                between them, and a hard line break inside a paragraph (the "<b>Lead.</b> text"
+                lines agents write one under the other) gets a little air of its own, less than a
+                paragraph's.</li>
+        </ul>
+
         <h3>0.3.1</h3>
         <ul>
             <li>Follows gg's session-docs rulings of 2026-10-19: <code>gg session files</code> rows of
