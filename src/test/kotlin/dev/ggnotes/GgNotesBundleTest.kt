@@ -44,9 +44,9 @@ class GgNotesBundleTest {
     }
 
     @Test
-    fun `the tool window is shown as Overviews while its id stays GgNotes`() {
+    fun `the tool window is shown as Agent Notes while its id stays GgNotes`() {
         // the platform reads the stripe title of tool window <id> from the plugin bundle key toolwindow.stripe.<id>
-        assertEquals("Overviews", GgNotesBundle.message("toolwindow.stripe.GgNotes"))
+        assertEquals("Agent Notes", GgNotesBundle.message("toolwindow.stripe.GgNotes"))
     }
 
     @Test
