@@ -1,8 +1,9 @@
 # gg live steering — the IDE as a third consumer
 
 > Copy of gigagit's `docs/superpowers/specs/2026-10-15-gg-steer-ide-consumer-design.md`
-> (merged into gigagit `main` as 69c01a9a). gigagit is the source of truth; refresh
-> this copy when that file changes. `PLUGIN.md` beside it is the plugin's
+> (merged into gigagit `main` as 69c01a9a; revision 2026-10-19 — session docs — merged as
+> ec9f3f4f, plan 4 of the session-docs feature). gigagit is the source of
+> truth; refresh this copy when that file changes. `PLUGIN.md` beside it is the plugin's
 > implementation spec derived from it; the `*.json` files and `README.md` are
 > gigagit's conformance material (`docs/specs/gg-steer/`).
 
@@ -303,3 +304,20 @@ add --title "Tour" --file tour.md --to ide` shows the overview in the tool
 window with its anchors walking the editor; with a gg TUI ALSO live on the
 worktree, the same commands without `--to` go to the TUI and the IDE stays
 untouched.
+
+## Revision 2026-10-19 — session docs
+
+The session-docs spec (`2026-10-18-gg-session-docs-design.md` §6.3) retires
+the verbs `note_add`, `note_list`, `note_show`, `note_rm`, `overview_add`,
+`overview_set`, `overview_list`, `overview_show`, `overview_rm`: notes and
+overviews are files in `<inbox>/docs/`, written by `gg session note|overview`
+or by the agent. A consumer that meets a retired verb answers `error:
+"<verb> is retired: write the file (gg session note add)"` (`… (gg session
+overview add)` for an overview verb) — the shape of any unknown verb, before
+any other check; `steer-cases.json` carries them as `retired` cases.
+Unchanged: `files` (whose overview rows now carry `author`, `created` and
+`anchors`), `file_focus` (`file_id` may be a document id: the overview's
+file name), `navigate`, `highlight`, `highlight_clear`. A consumer asked to
+focus a document id it has not listed yet re-reads the directory once
+before refusing: `gg session overview add` posts the focus right after the
+rename, ahead of any watch.
