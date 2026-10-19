@@ -23,6 +23,14 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.3.3</h3>
+        <ul>
+            <li>Double-click a row to open it with the document taking the whole window (the
+                Document Only state; the toolbar toggle or Close brings the list back). The
+                <b>Delete</b> key on a selected row is the context menu's Delete: a confirmation
+                first, then the deletion.</li>
+        </ul>
+
         <h3>0.3.2</h3>
         <ul>
             <li>The document breathes: paragraphs, headings, lists and code blocks have space

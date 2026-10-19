@@ -708,6 +708,50 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         }
     }
 
+    /**
+     * Two gestures on the tree: a double-click on a row opens it and gives the document the whole
+     * window (the Document Only state), and the Delete key is the row's Delete — the same
+     * confirm-then-delete the context menu offers.
+     */
+    fun testDoubleClickFillsTheWindowAndDeleteKeyIsBoundToTheRowsDelete() {
+        val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)!!
+        val service = OverviewService.getInstance(project)
+        val previous = service.ui
+        val panel = OverviewToolWindowPanel(project)
+        try {
+            val snapshot = ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { service.refreshSync() }.get()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            val overview = snapshot.repos.single().model.commits.single { it.commit == sha }.overviews.single { it.id == "7cf0812f" }
+            // nothing selected: a double-click on empty space changes nothing
+            panel.openSelectedFullArea()
+            assertFalse(service.listHidden)
+            assertNull(service.open)
+            // the first click of a double-click selects (and so opens) the row; the second fills the window with it
+            service.open(overview, repo)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertNotNull(panel.selectedRow)
+            panel.openSelectedFullArea()
+            assertTrue("the list is hidden, the document takes the window", service.listHidden)
+            assertEquals("7cf0812f", service.open?.overview?.id)
+            assertTrue(panel.documentShown)
+            // Close brings the list back, as before
+            service.close()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertFalse(service.listHidden)
+
+            // the Delete key on the tree runs the row's Delete action
+            val bound = com.intellij.openapi.actionSystem.ex.ActionUtil.getActions(panel.treeComponent)
+            val deleteKey = bound.filter { a -> a.shortcutSet.shortcuts.any { it is com.intellij.openapi.actionSystem.KeyboardShortcut && it.firstKeyStroke.keyCode == java.awt.event.KeyEvent.VK_DELETE } }
+            assertEquals("one action answers the Delete key", 1, deleteKey.size)
+            assertEquals("Delete", deleteKey.single().templatePresentation.text)
+        } finally {
+            service.setListHidden(false)
+            service.close()
+            com.intellij.openapi.util.Disposer.dispose(panel)
+            service.ui = previous
+        }
+    }
+
     private fun write(rel: String, text: String) {
         val f = File(repoDir, rel)
         f.parentFile.mkdirs()
