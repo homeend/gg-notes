@@ -60,5 +60,13 @@ class WireTest {
         val fp = JsonParser.parseString(quiet).asJsonObject.getAsJsonArray("files")[0].asJsonObject
         assertFalse("zero counts stay out like gg's omitempty", fp.has("notes"))
         assertFalse(fp.has("line"))
+        assertFalse(fp.has("author"))
+        // an overview row (session docs) carries its front matter: author, created as RFC 3339 UTC, anchors
+        val ov = Wire.toJson(Reply.ok("1-5", "").copy(files = listOf(OpenFileWire("20261018T143201-9f3a", "20261018T143201-9f3a.md", "overview", "Tour", null, 0, "shown", 0,
+            author = "claude", created = "2026-10-18T14:32:01Z", anchors = 3))))
+        val op = JsonParser.parseString(ov).asJsonObject.getAsJsonArray("files")[0].asJsonObject
+        assertEquals("claude", op.get("author").asString)
+        assertEquals("2026-10-18T14:32:01Z", op.get("created").asString)
+        assertEquals(3, op.get("anchors").asInt)
     }
 }

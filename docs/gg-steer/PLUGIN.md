@@ -100,15 +100,15 @@ Reply prose is English and parsed by agents: use these exact forms.
 | `highlight` | a `RangeHighlighter` (gutter mark + line background in the `tone` colour: info/warn/error) on `start..end` of `file` (`side` `new` or empty = new); kept until `highlight_clear` or the file closes | `marked <file> new:<start>-<end> as <tone>` |
 | `highlight_clear` | remove all; with `file`, only that file's | `cleared every mark` / `cleared the marks on <file>` |
 | `files` | the open-files list | `files: [...]` (§5), `detail: no open files` when empty |
-| `file_focus` | by `file_id` or `file`; `line` → caret; a `file_id` that is a session document id shows that overview (§5) | `focused <path>` — ` at line <n>` appended only when the command named a line (an overview: `focused <title>`) / `no open file <name>` |
-| `note_add`, `note_list`, `note_show`, `note_rm` | RETIRED (session-docs spec §6.3): a gg that still sends them is older than the files; one notice per root | error `<verb> is retired: write the file (gg session note add)` |
+| `file_focus` | by `file_id` or `file`; `line` → caret; a `file_id` that is a session document id shows that overview (§5) — an id not listed yet makes the IDE re-read the directory once before refusing (gg posts the focus right after its rename) | `focused <path>` — ` at line <n>` appended only when the command named a line; an overview: `focused overview <id> "<title>"` (gg's lead, the title Go-quoted) / `no open file <name>` |
+| `note_add`, `note_list`, `note_show`, `note_rm` | RETIRED (session-docs spec §6.3): refused BEFORE any other check, the worktree guard included; a gg that still sends them is older than the files; one notice per root | error `<verb> is retired: write the file (gg session note add)` |
 | `overview_add` / `overview_set` / `overview_list` / `overview_show` / `overview_rm` | RETIRED, as above | error `<verb> is retired: write the file (gg session overview add)` |
 | `focus`, `reload`, `serve` | refuse | error `<cmd> is a gg TUI command` |
 | anything else | refuse | error `unknown command "<cmd>"` (the verb quoted, as the TUI says it) |
 
-Before any of the above: if `worktree` is set and is not one of the
-project's git roots (compare cleaned, slash-form, case-folded on
-Windows/macOS), reply error `the IDE shows <root>, not <worktree>` and do
+Before any of the above except a retired verb: if `worktree` is set and is
+not one of the project's git roots (compare cleaned, slash-form, case-folded
+on Windows/macOS), reply error `the IDE shows <root>, not <worktree>` and do
 nothing.
 
 ## 5. The session: open files and the session docs directory
@@ -122,7 +122,8 @@ editor; `notes` = count of session notes on that path (§5.2). Order: most
 recently shown first. A file the user closes leaves the list; its highlights
 go with it. After the files, `files` lists every session overview of the
 worktree as `{id: <document id>, path: <id>.md, source: overview, title,
-state}` (the shown one first).
+state, author, created (RFC 3339 UTC, when the file has one), anchors}`
+(the shown one first).
 
 ### 5.1 The directory (session-docs spec §2, §4)
 

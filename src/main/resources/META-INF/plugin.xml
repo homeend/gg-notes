@@ -23,6 +23,16 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.3.1</h3>
+        <ul>
+            <li>Follows gg's session-docs rulings of 2026-10-19: <code>gg session files</code> rows of
+                an overview carry <code>author</code>, <code>created</code> and <code>anchors</code>;
+                <code>file_focus</code> on a document id written a moment ago re-reads the directory
+                once before refusing (gg posts the focus right after the rename), and answers
+                <code>focused overview &lt;id&gt; "&lt;title&gt;"</code> as gg's own window does; a retired
+                verb is refused before any other check.</li>
+        </ul>
+
         <h3>0.3.0</h3>
         <ul>
             <li>An agent's temporary overviews and notes are now FILES in the worktree's session
