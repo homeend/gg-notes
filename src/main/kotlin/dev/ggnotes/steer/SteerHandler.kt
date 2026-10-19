@@ -33,6 +33,11 @@ import java.nio.file.Path
 class SteerHandler(private val project: Project, private val service: SteerService) {
 
     fun handle(s: SteerService.RootSession, c: Command): Reply {
+        // steer SPEC revision 2026-10-19: a retired verb is refused before any other check (as an unknown verb is)
+        when (c.cmd) {
+            "note_add", "note_list", "note_show", "note_rm" -> return retired(s, c, "note")
+            "overview_add", "overview_set", "overview_list", "overview_show", "overview_rm" -> return retired(s, c, "overview")
+        }
         c.worktree?.takeIf { it.isNotEmpty() }?.let { wt ->
             if (!sameCheckout(wt, s.topLevel)) return Reply.fail(c.id, "the IDE shows ${s.topLevel}, not $wt")
         }
@@ -42,8 +47,6 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             "highlight_clear" -> highlightClear(s, c)
             "files" -> files(s, c)
             "file_focus" -> fileFocus(s, c)
-            "note_add", "note_list", "note_show", "note_rm" -> retired(s, c, "note")
-            "overview_add", "overview_set", "overview_list", "overview_show", "overview_rm" -> retired(s, c, "overview")
             "focus", "reload", "serve" -> Reply.fail(c.id, "${c.cmd} is a gg TUI command")
             else -> Reply.fail(c.id, "unknown command \"${c.cmd}\"")
         }
@@ -297,19 +300,27 @@ class SteerHandler(private val project: Project, private val service: SteerServi
                 },
                 noteCount = { entry -> s.marks.noteCount(entry.path) })
         }
+        // an overview row carries its front matter (steer SPEC revision 2026-10-19): author, created as RFC 3339 UTC, anchors
         val overviews = s.docs.index.overviews().map { e ->
             OpenFileWire(id = e.doc.id, path = e.doc.id + ".md", source = "overview", title = e.doc.title, rev = null, line = 0,
-                state = if (service.isShown(s, e.doc.id)) "shown" else "background", notes = 0)
+                state = if (service.isShown(s, e.doc.id)) "shown" else "background", notes = 0,
+                author = e.doc.author, created = e.doc.created?.let { java.time.format.DateTimeFormatter.ISO_INSTANT.format(it.toInstant()) },
+                anchors = e.doc.anchors.size)
         }
         return files + overviews.sortedByDescending { it.state == "shown" }
     }
 
     private fun fileFocus(s: SteerService.RootSession, c: Command): Reply {
         val name = c.fileId?.takeIf { it.isNotEmpty() } ?: c.file?.takeIf { it.isNotEmpty() } ?: return Reply.fail(c.id, "file_focus needs a file")
-        // a document id names a session overview: show it in the tool window
-        c.fileId?.takeIf { it.isNotEmpty() }?.let { id -> s.docs.index.overview(id) }?.let { e ->
-            service.showOverview(s, e, keepAnchor = true)
-            return Reply.ok(c.id, "focused ${e.doc.title}")
+        // a document id names a session overview: show it in the tool window, answering with gg's own lead.
+        // `gg session overview add` posts the focus right after its rename, ahead of any watch: an id not
+        // listed yet makes the IDE re-read the directory once before refusing (session-docs rulings §6.3)
+        c.fileId?.takeIf { it.isNotEmpty() && dev.ggnotes.session.SessionDocNames.isValidId(it) }?.let { id ->
+            val e = s.docs.index.overview(id) ?: run { service.reloadDocsNow(s); s.docs.index.overview(id) }
+            if (e != null) {
+                service.showOverview(s, e, keepAnchor = true)
+                return Reply.ok(c.id, "focused " + overviewName(e.doc.id, e.doc.title))
+            }
         }
         val entry = (if (!c.fileId.isNullOrEmpty()) s.memory.findFile(c.fileId) else s.memory.findFileByPath(name))
             ?: return Reply.fail(c.id, "no open file $name")
@@ -362,6 +373,23 @@ class SteerHandler(private val project: Project, private val service: SteerServi
     }
 
     // ---- helpers -------------------------------------------------------------------------
+
+    /** gg's `agentdocs.OverviewName`: `overview <id> "<title>"`, the title Go-quoted. */
+    private fun overviewName(id: String, title: String): String {
+        val quoted = StringBuilder("\"")
+        for (ch in title) {
+            when {
+                ch == '"' -> quoted.append("\\\"")
+                ch == '\\' -> quoted.append("\\\\")
+                ch == '\n' -> quoted.append("\\n")
+                ch == '\t' -> quoted.append("\\t")
+                ch == '\r' -> quoted.append("\\r")
+                ch.code < 0x20 || ch.code == 0x7f -> quoted.append("\\x%02x".format(ch.code))
+                else -> quoted.append(ch)
+            }
+        }
+        return "overview $id " + quoted.append('"')
+    }
 
     private fun onEdt(block: () -> Unit) {
         if (ApplicationManager.getApplication().isDispatchThread) block() else ApplicationManager.getApplication().invokeAndWait(block)

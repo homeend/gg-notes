@@ -66,6 +66,10 @@ data class OpenFileWire(
     val line: Int = 0,
     val state: String,
     val notes: Int = 0,
+    /** An overview document's front matter (session docs): who wrote it, when (RFC 3339 UTC) and how many anchors; empty on every other row. */
+    val author: String? = null,
+    val created: String? = null,
+    val anchors: Int = 0,
 )
 
 /** SPEC §3.2. */
@@ -147,6 +151,9 @@ object Wire {
                     if (f.line != 0) addProperty("line", f.line)
                     addProperty("state", f.state)
                     if (f.notes != 0) addProperty("notes", f.notes)
+                    f.author?.takeIf { it.isNotEmpty() }?.let { addProperty("author", it) }
+                    f.created?.takeIf { it.isNotEmpty() }?.let { addProperty("created", it) }
+                    if (f.anchors != 0) addProperty("anchors", f.anchors)
                 }
             }))
         }

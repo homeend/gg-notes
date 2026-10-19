@@ -198,6 +198,9 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
             post("3-2", """{"id":"3-2","cmd":"overview_add","title":"Tour","text":"t","wait":true}""").get("error").asString)
         assertEquals("overview_list is retired: write the file (gg session overview add)",
             post("3-3", """{"id":"3-3","cmd":"overview_list","wait":true}""").get("error").asString)
+        // steer SPEC revision 2026-10-19: the retired refusal comes before any other check, the worktree guard included
+        assertEquals("note_list is retired: write the file (gg session note add)",
+            post("3-4", """{"id":"3-4","cmd":"note_list","worktree":"/somewhere/else","wait":true}""").get("error").asString)
 
         // step 4: session docs — files an agent drops into the worktree's docs directory (SPEC §4); the plugin never creates it
         val docs = session.docsDir
@@ -235,9 +238,13 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         assertEquals("overview", ovEntry.get("source").asString)
         assertEquals("Tour", ovEntry.get("title").asString)
         assertEquals("background", ovEntry.get("state").asString)
+        // the overview row carries its front matter (steer SPEC revision 2026-10-19): author, created (RFC 3339 UTC), anchors
+        assertEquals("claude", ovEntry.get("author").asString)
+        assertEquals("2026-10-18T15:00:00Z", ovEntry.get("created").asString)
+        assertEquals(3, ovEntry.get("anchors").asInt)
 
-        // file_focus by document id shows it in the tool window: the note anchor points at the note's lines, the unresolved one is text
-        assertEquals("focused Tour", post("4-2", """{"id":"4-2","cmd":"file_focus","file_id":"$ovId","wait":true}""").get("detail").asString)
+        // file_focus by document id shows it in the tool window, with gg's own lead; the note anchor points at the note's lines, the unresolved one is text
+        assertEquals("focused overview $ovId \"Tour\"", post("4-2", """{"id":"4-2","cmd":"file_focus","file_id":"$ovId","wait":true}""").get("detail").asString)
         val overviewService = OverviewService.getInstance(project)
         val viewKind = steer.viewerOverview(session, row.entry).viewKind
         waitFor("tour shown in the tool window") { overviewService.open?.overview?.viewKind == viewKind }
@@ -248,6 +255,18 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         assertEquals(dev.ggnotes.store.LinkTarget.Anchor("internal/x/gate.go", 4, 4), shownDoc.anchors[1].target)
         assertEquals("the note", shownDoc.anchors[1].label)
         assertEquals("no open file nope", post("4-3", """{"id":"4-3","cmd":"file_focus","file_id":"nope","wait":true}""").get("error").asString)
+        // `gg session overview add` posts the focus right after its rename, ahead of any watch: an id not listed yet
+        // makes the IDE re-read the directory once before refusing (session-docs rulings §6.3)
+        drop("20261018T150100-bbbb.md", "+++\ntitle = 'Fresh'\n+++\nnew [a](internal/x/gate.go:1)\n")
+        assertEquals("focused overview 20261018T150100-bbbb \"Fresh\"",
+            post("4-3b", """{"id":"4-3b","cmd":"file_focus","file_id":"20261018T150100-bbbb","wait":true}""").get("detail").asString)
+        waitFor("the fresh overview is shown") { overviewService.open?.overview?.id == "20261018T150100-bbbb" }
+        assertEquals(2, steer.sessionOverviews(root).size)
+        Files.delete(docs.resolve("20261018T150100-bbbb.md"))
+        steer.reloadDocs()
+        waitFor("back to the tour's row alone") { steer.sessionOverviews(root).size == 1 }
+        assertEquals("focused overview $ovId \"Tour\"", post("4-3c", """{"id":"4-3c","cmd":"file_focus","file_id":"$ovId","wait":true}""").get("detail").asString)
+        waitFor("tour shown again") { overviewService.open?.overview?.viewKind == viewKind }
 
         // the user inserts two lines at the top: the note follows its text to line 6 and the box moves
         ApplicationManager.getApplication().invokeAndWait {
@@ -502,7 +521,7 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
             expect.get("error_prefix")?.asString?.let { want -> if (reply.get("error")?.asString?.startsWith(want) != true) failures += "$caseName: error=${reply.get("error")} want prefix \"$want\"" }
         }
         assertEquals("corpus mismatches:\n" + failures.joinToString("\n"), emptyList<String>(), failures)
-        assertEquals(15, n)
+        assertEquals("every non-TUI case of the refreshed corpus ran (two retired ones included)", 16, n)
     }
 
     /**

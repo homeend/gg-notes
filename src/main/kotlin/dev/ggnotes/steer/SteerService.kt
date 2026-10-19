@@ -189,6 +189,12 @@ class SteerService(private val project: Project) : Disposable {
         }
     }
 
+    /** On the worker (a command in flight): reconcile [s]'s directory now and apply what changed, before answering. */
+    fun reloadDocsNow(s: RootSession) {
+        val changes = runCatching { s.docs.reload() }.getOrElse { LOG.warn("GgNotes: reading ${s.docsDir}", it); return }
+        if (!changes.isEmpty || changes.refused.isNotEmpty()) docsChanged(s, changes)
+    }
+
     /** Worker: the directory changed — boxes follow, a replaced open overview is re-rendered in place, a gone one closes, the tree is told. */
     private fun docsChanged(s: RootSession, changes: dev.ggnotes.session.DocIndex.Changes) {
         LOG.info("GgNotes: session docs of ${s.repo.root.name}: +${changes.added.size} ~${changes.replaced.size} -${changes.removed.size}")
