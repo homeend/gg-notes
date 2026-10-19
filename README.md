@@ -6,7 +6,7 @@ an AI agent's markdown document whose links are anchors into the code at one
 commit, plus remarks on exact lines. Read from gg's own store on disk
 (`docs/gg-notes-store/SPEC.md`), with no gg running. Read-only.
 
-- **Overviews tool window** (right stripe): the overviews of the open
+- **Agent Notes tool window** (right stripe): the overviews of the open
   repository grouped by commit, HEAD's first, then newest; rows read
   `title · author · date · short sha · branch | PR #n`.
 - **Document**: selecting a row renders it; anchors are links numbered in

@@ -11,7 +11,7 @@
         commit, plus remarks on exact lines. The same overview the user sees in gg, read from the
         same files on disk, with no gg running.</p>
         <ul>
-            <li>The <b>Overviews</b> tool window lists the overviews of the open repository, grouped by
+            <li>The <b>Agent Notes</b> tool window lists the overviews of the open repository, grouped by
                 commit (HEAD's first, then newest).</li>
             <li>Selecting one renders its document; anchors are links numbered in document order,
                 with next/previous-anchor actions.</li>
@@ -23,6 +23,12 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.4.1</h3>
+        <ul>
+            <li>The tool window is shown as <b>Agent Notes</b> on the stripe and in its header
+                (it was Overviews). Its id is unchanged, so its place and size carry over.</li>
+        </ul>
+
         <h3>0.4.0</h3>
         <ul>
             <li>The plugin is now <b>AgentNotes</b> (it was GgNotes); the distribution is
@@ -186,7 +192,7 @@
         <notificationGroup id="GgNotes" displayType="BALLOON" key="notification.group.name"/>
         <postStartupActivity implementation="dev.ggnotes.startup.GgNotesStartupActivity"/>
         <!-- The id is frozen like the plugin name (layouts and code refer to it); the visible stripe
-             title comes from the bundle key toolwindow.stripe.GgNotes ("Overviews"). -->
+             title comes from the bundle key toolwindow.stripe.GgNotes ("Agent Notes"). -->
         <toolWindow id="GgNotes"
                     anchor="right"
                     doNotActivateOnStart="true"
