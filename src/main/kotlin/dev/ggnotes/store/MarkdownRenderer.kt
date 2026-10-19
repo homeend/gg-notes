@@ -88,11 +88,20 @@ object MarkdownRenderer {
             MarkdownElementTypes.LIST_ITEM to ListItemProvider,
         )
 
-        /** A newline inside a paragraph is a hard break (GitHub-comment style); elsewhere it is nothing. */
+        /**
+         * A newline inside a paragraph is a hard break (GitHub-comment style); elsewhere it is nothing.
+         * In a top-level paragraph the break starts a new `<p class="br">` so the stylesheet can give the
+         * lines a little air (agents write "**Lead.** text" lines one under the other); inside a list
+         * item or a quote it stays a `<br />`, where a new block would break the item.
+         */
         object EolProvider : GeneratingProvider {
             override fun processNode(visitor: HtmlGenerator.HtmlGeneratingVisitor, text: String, node: ASTNode) {
-                if (node.parent?.type == MarkdownElementTypes.PARAGRAPH) visitor.consumeHtml("<br />")
-                else visitor.consumeHtml("\n")
+                val parent = node.parent
+                when {
+                    parent?.type != MarkdownElementTypes.PARAGRAPH -> visitor.consumeHtml("\n")
+                    parent.parent?.type == MarkdownElementTypes.MARKDOWN_FILE -> visitor.consumeHtml("</p>\n<p class=\"br\">")
+                    else -> visitor.consumeHtml("<br />")
+                }
             }
         }
 

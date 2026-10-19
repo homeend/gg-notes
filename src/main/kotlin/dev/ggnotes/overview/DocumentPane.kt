@@ -125,6 +125,12 @@ class DocumentPane(private val project: Project, private val service: OverviewSe
         return """
             body { font-family: '${label.family}'; font-size: ${label.size}pt; color: $fg; }
             h1 { font-size: ${label.size + 5}pt; } h2 { font-size: ${label.size + 3}pt; } h3 { font-size: ${label.size + 1}pt; }
+            h1, h2, h3, h4 { margin-top: 14px; margin-bottom: 2px; }
+            p { margin-top: 10px; margin-bottom: 0; }
+            p.br { margin-top: 4px; }
+            ul, ol { margin-top: 6px; margin-bottom: 0; }
+            li { margin-bottom: 4px; }
+            pre, blockquote, table { margin-top: 8px; margin-bottom: 0; }
             a { color: $link; text-decoration: none; }
             .current { background-color: $current; color: $fg; }
             .missing { color: $missing; text-decoration: line-through; }
@@ -132,7 +138,6 @@ class DocumentPane(private val project: Project, private val service: OverviewSe
             pre { font-family: '$editorFont'; background-color: $codeBg; padding: 6px; }
             blockquote { border-left: 3px solid $border; margin-left: 4px; padding-left: 8px; color: $missing; }
             table { border-collapse: collapse; } th, td { border: 1px solid $border; padding: 2px 6px; }
-            li { margin-bottom: 2px; }
         """.trimIndent()
     }
 
