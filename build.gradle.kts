@@ -14,7 +14,7 @@ group = "dev.ggnotes"
 val gitShortSha = providers.exec {
     commandLine("git", "rev-parse", "--short", "HEAD")
 }.standardOutput.asText.map { it.trim() }
-version = "0.2.9+" + runCatching { gitShortSha.get().ifEmpty { "dev" } }.getOrDefault("dev")
+version = "0.2.10+" + runCatching { gitShortSha.get().ifEmpty { "dev" } }.getOrDefault("dev")
 
 repositories {
     mavenCentral()

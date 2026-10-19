@@ -615,6 +615,56 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         }
     }
 
+    /**
+     * Close leaves the window ready for the next click: no row stays selected (a selected row
+     * fires no selection change, so it could not be reopened), the document half leaves the
+     * splitter so the list takes the window, and Document Only is disabled with nothing open.
+     */
+    fun testCloseClearsTheSelectionHidesTheDocumentHalfAndDisablesDocumentOnly() {
+        val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)!!
+        val service = OverviewService.getInstance(project)
+        val previous = service.ui
+        val panel = OverviewToolWindowPanel(project) // registers itself as the service's ui
+        try {
+            val snapshot = ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { service.refreshSync() }.get()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            val overview = snapshot.repos.single().model.commits.single { it.commit == sha }.overviews.single { it.id == "7cf0812f" }
+            assertNull("nothing open: no document half", panel.selectedRow)
+            assertFalse(panel.documentShown)
+
+            val action = DocumentOnlyAction()
+            val context = com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project)
+            val idle = com.intellij.testFramework.TestActionEvent.createTestEvent(action, context)
+            action.update(idle)
+            assertFalse("Document Only is disabled with nothing open", idle.presentation.isEnabled)
+
+            service.open(overview, repo)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertNotNull("the opened overview's row is selected", panel.selectedRow)
+            assertTrue(panel.documentShown)
+            val busy = com.intellij.testFramework.TestActionEvent.createTestEvent(action, context)
+            action.update(busy)
+            assertTrue(busy.presentation.isEnabled)
+
+            service.setListHidden(true)
+            service.close()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertNull("Close clears the selection", panel.selectedRow)
+            assertFalse("Close takes the document half away", panel.documentShown)
+            assertFalse("Close brings a hidden list back", service.listHidden)
+
+            // the same row can be clicked again: selecting it opens it
+            service.open(overview, repo)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("7cf0812f", service.open?.overview?.id)
+            assertTrue(panel.documentShown)
+        } finally {
+            service.close()
+            com.intellij.openapi.util.Disposer.dispose(panel)
+            service.ui = previous
+        }
+    }
+
     private fun write(rel: String, text: String) {
         val f = File(repoDir, rel)
         f.parentFile.mkdirs()

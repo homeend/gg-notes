@@ -60,7 +60,9 @@ class DocumentPane(private val project: Project, private val service: OverviewSe
         shown = open
         if (open == null) {
             header.text = GgNotesBundle.message("document.none")
-            pane.text = ""
+            // an empty string leaves the HTML kit's previous body structure behind (a stray bullet); a bare body does not
+            pane.text = "<html><body></body></html>"
+            pane.caretPosition = 0
             return
         }
         val o = open.overview

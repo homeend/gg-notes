@@ -23,6 +23,13 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.2.10</h3>
+        <ul>
+            <li>Close leaves the window ready for the next click: no row stays selected, so the
+                same row can be opened again; the document half goes away and the list takes the
+                whole window; Document Only is disabled while nothing is open.</li>
+        </ul>
+
         <h3>0.2.9</h3>
         <ul>
             <li>The tool window is shown as <b>Overviews</b> on the stripe and in its header. Its id
