@@ -1,7 +1,7 @@
 # gg notes store format — part 2: reviews, line notes, meta
 
 > Copy of gigagit's `docs/superpowers/specs/2026-10-15-gg-notes-store-format-part2-design.md`
-> (branch `spec/gg-notes-store-format`, commit 026da99e). gigagit is the
+> (merged into gigagit `main` as c6f4caef, 2026-10-19). gigagit is the
 > source of truth; refresh this copy when that file changes. Paths such as
 > `docs/specs/gg-notes-store/` below are gigagit's — here the same files sit
 > beside this one.
