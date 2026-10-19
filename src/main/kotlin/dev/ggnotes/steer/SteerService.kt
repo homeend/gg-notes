@@ -104,7 +104,8 @@ class SteerService(private val project: Project) : Disposable {
                 pollTask = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay({ drainAll() }, POLL_MILLIS, POLL_MILLIS, TimeUnit.MILLISECONDS)
                 docsTask = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay({ reloadDocs() }, DOCS_POLL_MILLIS, DOCS_POLL_MILLIS, TimeUnit.MILLISECONDS)
                 // the inbox itself is watched too: that is where a writer creates docs/
-                watcher = InboxWatcher(sessions.values.flatMap { listOf(it.ideDir, it.inbox) }) { drainAll(); reloadDocs() }.also { it.start() }
+                watcher = InboxWatcher(sessions.values.map { it.ideDir }) { drainAll(); reloadDocs() }.also { it.start() }
+                for (s in sessions.values) watcher?.add(s.inbox, createOnly = true)
                 watchDocsDirs()
             } catch (t: Throwable) {
                 LOG.warn("GgNotes steer: start failed", t)
@@ -182,7 +183,7 @@ class SteerService(private val project: Project) : Disposable {
             worker.execute {
                 for (s in sessions.values) {
                     val changes = runCatching { s.docs.reload() }.getOrElse { LOG.warn("GgNotes: reading ${s.docsDir}", it); null } ?: continue
-                    if (!changes.isEmpty) docsChanged(s, changes)
+                    if (!changes.isEmpty || changes.refused.isNotEmpty()) docsChanged(s, changes)
                 }
             }
         }
@@ -191,12 +192,14 @@ class SteerService(private val project: Project) : Disposable {
     /** Worker: the directory changed — boxes follow, a replaced open overview is re-rendered in place, a gone one closes, the tree is told. */
     private fun docsChanged(s: RootSession, changes: dev.ggnotes.session.DocIndex.Changes) {
         LOG.info("GgNotes: session docs of ${s.repo.root.name}: +${changes.added.size} ~${changes.replaced.size} -${changes.removed.size}")
+        // SPEC §3.4: a file a reader ignores is named once, with the reason, so a writer can find out why
+        for ((name, reason) in changes.refused) LOG.info("GgNotes: session docs of ${s.repo.root.name}: ${name.fileName} ignored: $reason")
         if (changes.notesChanged) s.marks.docsChanged()
         val open = dev.ggnotes.overview.OverviewService.getInstance(project).open?.overview
         for (name in changes.replaced) {
             if (name.kind != dev.ggnotes.session.DocKind.OVERVIEW || open?.viewKind != viewKind(s, name.id)) continue
             val entry = s.docs.index.overview(name.id) ?: continue
-            showOverview(s, entry, keepAnchor = true)
+            showOverview(s, entry, keepAnchor = true, raise = false)
         }
         for (name in changes.removed) {
             if (name.kind == dev.ggnotes.session.DocKind.OVERVIEW && open?.viewKind == viewKind(s, name.id)) onEdt { dev.ggnotes.overview.OverviewService.getInstance(project).close() }
@@ -218,6 +221,9 @@ class SteerService(private val project: Project) : Disposable {
 
     /** The viewer's identity of a session overview: the root is part of it, ids being unique per worktree only. */
     fun viewKind(s: RootSession, id: String): String = "session:${s.topLevel}\u0000$id:"
+
+    /** [dev.ggnotes.store.Overview.identity] of the viewer form, without building it (the tree compares identities on every rebuild). */
+    fun sessionIdentity(s: RootSession, doc: dev.ggnotes.session.SessionOverviewDoc): String = viewKind(s, doc.id) + "\u0000" + doc.title.trim()
 
     /** The session overview as the overview viewer shows it: live anchors into the worktree, note anchors rewritten to the note's lines now. */
     fun viewerOverview(s: RootSession, entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionOverviewDoc>): dev.ggnotes.store.Overview {
@@ -241,13 +247,17 @@ class SteerService(private val project: Project) : Disposable {
     fun isShown(s: RootSession, id: String): Boolean =
         dev.ggnotes.overview.OverviewService.getInstance(project).open?.overview?.viewKind == viewKind(s, id)
 
-    /** Open [entry] in the tool window, synchronously on the EDT; [keepAnchor] re-renders a replaced document on the same anchor. */
-    fun showOverview(s: RootSession, entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionOverviewDoc>, keepAnchor: Boolean) {
+    /**
+     * Open [entry] in the tool window, synchronously on the EDT; [keepAnchor] re-renders a replaced
+     * document on the same anchor. [raise] shows the tool window (a rewrite of an open file — gg's
+     * tours are rewritten on every report — re-renders without raising a window the user hid).
+     */
+    fun showOverview(s: RootSession, entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionOverviewDoc>, keepAnchor: Boolean, raise: Boolean = true) {
         val overview = viewerOverview(s, entry)
         onEdt {
             val service = dev.ggnotes.overview.OverviewService.getInstance(project)
             if (keepAnchor) service.openKeepingAnchor(overview, s.repo) else service.open(overview, s.repo)
-            com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(dev.ggnotes.overview.OverviewService.TOOL_WINDOW_ID)?.show()
+            if (raise) com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(dev.ggnotes.overview.OverviewService.TOOL_WINDOW_ID)?.show()
         }
         sessionChanged()
     }
@@ -305,7 +315,7 @@ class SteerService(private val project: Project) : Disposable {
         if (project.isDisposed) return
         runCatching {
             for (repo in GitRepositoryManager.getInstance(project).repositories) {
-                if (!sessions.containsKey(repo.root.path)) register(repo)?.let { watcher?.add(it.ideDir); watcher?.add(it.inbox) }
+                if (!sessions.containsKey(repo.root.path)) register(repo)?.let { watcher?.add(it.ideDir); watcher?.add(it.inbox, createOnly = true) }
             }
             watchDocsDirs()
         }.onFailure { LOG.warn("GgNotes steer: registering roots", it) }

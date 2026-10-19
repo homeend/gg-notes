@@ -53,12 +53,15 @@ class DocIndexTest {
         val first = sync()
         assertEquals(listOf("20261018T143201-9f3a", "n1"), first.added.map { it.id })
         assertEquals("the unreadable entry is not a document", null, index.note("bad"))
+        assertEquals(listOf("bad" to "the range ends before it starts"), first.refused.map { it.first.id to it.second })
         assertEquals(3, reads)
         assertEquals("First", index.overview("20261018T143201-9f3a")!!.doc.title)
         assertEquals(3, index.note("n1")!!.doc.start)
 
-        // unchanged stamps: nothing re-read, nothing reported (the bad one included)
-        assertTrue(sync().isEmpty)
+        // unchanged stamps: nothing re-read, nothing reported (the bad one included: named once)
+        val same = sync()
+        assertTrue(same.isEmpty)
+        assertTrue(same.refused.isEmpty())
         assertEquals(3, reads)
 
         // a replacement with a new mtime is re-read and REPLACED in place

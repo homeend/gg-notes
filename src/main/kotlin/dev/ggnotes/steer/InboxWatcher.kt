@@ -31,10 +31,17 @@ class InboxWatcher(private val dirs: List<Path>, private val onWake: () -> Unit)
         }
     }
 
-    /** Watch one more directory (a root detected after start, a docs directory that appeared). */
-    fun add(dir: Path) {
+    /**
+     * Watch one more directory (a root detected after start, a docs directory that appeared).
+     * [createOnly] for the inbox itself: only a `docs/` appearing matters there, and the IDE's own
+     * presence touch would otherwise wake the reload every second.
+     */
+    fun add(dir: Path, createOnly: Boolean = false) {
         val ws = service ?: return
-        runCatching { dir.register(ws, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_MODIFY, StandardWatchEventKinds.ENTRY_DELETE) }
+        runCatching {
+            if (createOnly) dir.register(ws, StandardWatchEventKinds.ENTRY_CREATE)
+            else dir.register(ws, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_MODIFY, StandardWatchEventKinds.ENTRY_DELETE)
+        }
     }
 
     private fun loop(ws: WatchService) {

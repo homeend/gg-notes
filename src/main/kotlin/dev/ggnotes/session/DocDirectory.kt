@@ -40,7 +40,9 @@ class DocIndex {
     /** A document plus the file facts a row shows: [time] is `created`, else the file's modification time (millis). */
     class Entry<D>(val doc: D, val size: Long, val mtime: Long, val time: Long)
 
-    data class Changes(val added: List<DocName>, val replaced: List<DocName>, val removed: List<DocName>) {
+    /** [refused]: entries re-read this time that are not documents, with gg's reason (named once per stamp). */
+    data class Changes(val added: List<DocName>, val replaced: List<DocName>, val removed: List<DocName>, val refused: List<Pair<DocName, String>> = emptyList()) {
+        /** No document appeared, changed or went (a refused entry is not a change of what is shown). */
         val isEmpty: Boolean get() = added.isEmpty() && replaced.isEmpty() && removed.isEmpty()
         val overviewsChanged: Boolean get() = (added + replaced + removed).any { it.kind == DocKind.OVERVIEW }
         val notesChanged: Boolean get() = (added + replaced + removed).any { it.kind == DocKind.NOTE }
@@ -57,6 +59,7 @@ class DocIndex {
         val added = ArrayList<DocName>()
         val replaced = ArrayList<DocName>()
         val removed = ArrayList<DocName>()
+        val refused = ArrayList<Pair<DocName, String>>()
         val present = HashSet<DocName>()
         for (l in listing) {
             present += l.name
@@ -65,7 +68,9 @@ class DocIndex {
             stamps[l.name] = stamp
             val known = isKnown(l.name)
             val bytes = runCatching { read(l) }.getOrNull()
-            val ok = bytes != null && load(l, bytes)
+            val reason = if (bytes == null) "unreadable" else load(l, bytes)
+            val ok = reason == null
+            if (reason != null) refused += l.name to reason
             when {
                 ok && known -> replaced += l.name
                 ok -> added += l.name
@@ -77,7 +82,7 @@ class DocIndex {
             stamps.remove(name)
             if (isKnown(name)) { drop(name); removed += name }
         }
-        Changes(added, replaced, removed)
+        Changes(added, replaced, removed, refused)
     }
 
     private fun isKnown(name: DocName) = if (name.kind == DocKind.OVERVIEW) name.id in overviews else name.id in notes
@@ -86,16 +91,20 @@ class DocIndex {
         if (name.kind == DocKind.OVERVIEW) overviews.remove(name.id) else notes.remove(name.id)
     }
 
-    private fun load(l: DocDirectory.Listed, bytes: ByteArray): Boolean {
-        return if (l.name.kind == DocKind.OVERVIEW) {
-            val p = SessionDocParser.overview(l.name.id, bytes) as? Parsed.Ok ?: return false
-            overviews[l.name.id] = Entry(p.doc, l.size, l.mtime, p.doc.created?.toInstant()?.toEpochMilli() ?: l.mtime)
-            true
+    /** Parse and store; null when the file is a document, else the refusal. */
+    private fun load(l: DocDirectory.Listed, bytes: ByteArray): String? {
+        if (l.name.kind == DocKind.OVERVIEW) {
+            when (val p = SessionDocParser.overview(l.name.id, bytes)) {
+                is Parsed.Refused -> return p.reason
+                is Parsed.Ok -> overviews[l.name.id] = Entry(p.doc, l.size, l.mtime, p.doc.created?.toInstant()?.toEpochMilli() ?: l.mtime)
+            }
         } else {
-            val p = SessionDocParser.note(l.name.id, bytes) as? Parsed.Ok ?: return false
-            notes[l.name.id] = Entry(p.doc, l.size, l.mtime, p.doc.created?.toInstant()?.toEpochMilli() ?: l.mtime)
-            true
+            when (val p = SessionDocParser.note(l.name.id, bytes)) {
+                is Parsed.Refused -> return p.reason
+                is Parsed.Ok -> notes[l.name.id] = Entry(p.doc, l.size, l.mtime, p.doc.created?.toInstant()?.toEpochMilli() ?: l.mtime)
+            }
         }
+        return null
     }
 
     fun overview(id: String): Entry<SessionOverviewDoc>? = synchronized(lock) { overviews[id] }

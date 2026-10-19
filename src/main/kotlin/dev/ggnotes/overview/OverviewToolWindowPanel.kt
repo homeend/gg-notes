@@ -167,7 +167,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
             if (sessionRows.isNotEmpty()) {
                 val sn = DefaultMutableTreeNode(SessionGroupNode(repo.repo))
                 parent.add(sn)
-                for (row in sessionRows) sn.add(DefaultMutableTreeNode(SessionOverviewNode(row, repo.repo, steer.viewerOverview(row.session, row.entry).identity)))
+                for (row in sessionRows) sn.add(DefaultMutableTreeNode(SessionOverviewNode(row, repo.repo, steer.sessionIdentity(row.session, row.entry.doc))))
             }
             repo.error?.let { messages += it }
             repo.contents.problems.forEach { messages += "${repo.repo.root.name}: $it" }
