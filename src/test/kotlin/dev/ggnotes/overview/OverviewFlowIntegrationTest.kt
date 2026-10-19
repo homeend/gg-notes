@@ -191,95 +191,121 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         val after = post("2-13", """{"id":"2-13","cmd":"files","wait":true}""").getAsJsonArray("files").map { it.asJsonObject.get("id").asString }
         assertFalse(after.contains(commitEntry.get("id").asString))
 
-        // step 3: temporary notes on the editor's current text, drawn as boxes, re-anchored on edits
-        val added = post("3-1", """{"id":"3-1","cmd":"note_add","file":"internal/x/gate.go","start":4,"end":4,"summary":"Returns the flag.","rationale":"Why.","author":"ada","wait":true}""")
-        assertEquals(added.toString(), "noted internal/x/gate.go:4 as t1", added.get("detail")?.asString)
-        val noteWire = added.getAsJsonArray("notes")[0].asJsonObject
-        assertEquals("t1", noteWire.get("id").asString)
-        assertEquals("f1", noteWire.get("file_id").asString)
-        assertEquals("ada", noteWire.get("author").asString)
-        assertEquals("a line number is 1-based", post("3-2", """{"id":"3-2","cmd":"note_add","file":"internal/x/gate.go","start":0,"end":0,"summary":"x","wait":true}""").get("error").asString)
-        assertEquals("a note needs a summary", post("3-3", """{"id":"3-3","cmd":"note_add","file":"internal/x/gate.go","start":1,"end":1,"summary":" ","wait":true}""").get("error").asString)
-        val shown = post("3-4", """{"id":"3-4","cmd":"note_show","note_id":"t1","wait":true}""").getAsJsonArray("notes")[0].asJsonObject
-        assertEquals(listOf("\treturn open"), shown.getAsJsonArray("text").map { it.asString })
+        // step 3: the in-memory note and overview verbs are retired (session-docs SPEC §6.3): the refusal names the fix
+        assertEquals("note_add is retired: write the file (gg session note add)",
+            post("3-1", """{"id":"3-1","cmd":"note_add","file":"internal/x/gate.go","start":4,"end":4,"summary":"x","wait":true}""").get("error").asString)
+        assertEquals("overview_add is retired: write the file (gg session overview add)",
+            post("3-2", """{"id":"3-2","cmd":"overview_add","title":"Tour","text":"t","wait":true}""").get("error").asString)
+        assertEquals("overview_list is retired: write the file (gg session overview add)",
+            post("3-3", """{"id":"3-3","cmd":"overview_list","wait":true}""").get("error").asString)
+
+        // step 4: session docs — files an agent drops into the worktree's docs directory (SPEC §4); the plugin never creates it
+        val docs = session.docsDir
+        assertEquals(session.inbox.resolve("docs"), docs)
+        assertFalse("a reader creates nothing", Files.exists(docs))
+        Files.createDirectories(docs)
+        fun drop(name: String, text: String) {
+            Files.writeString(docs.resolve(".$name.1234.tmp"), text)
+            Files.move(docs.resolve(".$name.1234.tmp"), docs.resolve(name), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+        }
+        val ovId = "20261018T150000-aaaa"
+        val tour = "Start at [the gate](internal/x/gate.go:5), then [the note](note:n-gate); [gone](internal/nope.go:3) is missing."
+        drop("n-gate.toml", "path = 'internal/x/gate.go'\nstart = 4\nend = 4\nsummary = 'Returns the flag.'\nrationale = 'Why.'\nauthor = 'ada'\nlines = ['\treturn open']\n")
+        drop("$ovId.md", "+++\ntitle = 'Tour'\nauthor = 'claude'\ncreated = 2026-10-18T15:00:00Z\n+++\n$tour\n")
+        waitFor("the overview row appears through the poll") { steer.sessionOverviews(root).size == 1 }
+        val row = steer.sessionOverviews(root).single()
+        assertEquals("Tour", row.entry.doc.title)
+        assertEquals("claude", row.entry.doc.author)
+        assertEquals(3, row.entry.doc.anchors.size)
+        assertEquals(listOf("internal/nope.go:3"), row.unresolved)
+        assertFalse(row.shown)
+
+        // the note is a box on the editor of its file, placed from its lines (cold anchoring): line 4 still reads `return open`
         ApplicationManager.getApplication().invokeAndWait {
             FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, LocalFileSystem.getInstance().refreshAndFindFileByIoFile(File(repoDir, "internal/x/gate.go"))!!, 0, 0), true)
         }
         val gateEditor = FileEditorManager.getInstance(project).selectedTextEditor!!
-        waitFor("one note box drawn") { gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).size == 1 }
-        assertEquals(1, post("3-5", """{"id":"3-5","cmd":"files","wait":true}""").getAsJsonArray("files").map { it.asJsonObject }.single { it.get("id").asString == "f1" }.get("notes").asInt)
+        waitFor("one note box drawn at line 4") { gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).singleOrNull()?.let { gateEditor.document.getLineNumber(it.offset) } == 3 }
+        assertEquals(listOf("n-gate" to dev.ggnotes.session.Placement(4, 4, false)), session.marks.placementsOn("internal/x/gate.go").map { it.first.id to it.second })
+
+        // `files`: the file counts its session notes; the overview is listed under its document id
+        val withDocs = post("4-1", """{"id":"4-1","cmd":"files","wait":true}""").getAsJsonArray("files").map { it.asJsonObject }
+        assertEquals(1, withDocs.single { it.get("id").asString == "f1" }.get("notes").asInt)
+        val ovEntry = withDocs.single { it.get("id").asString == ovId }
+        assertEquals("overview", ovEntry.get("source").asString)
+        assertEquals("Tour", ovEntry.get("title").asString)
+        assertEquals("background", ovEntry.get("state").asString)
+
+        // file_focus by document id shows it in the tool window: the note anchor points at the note's lines, the unresolved one is text
+        assertEquals("focused Tour", post("4-2", """{"id":"4-2","cmd":"file_focus","file_id":"$ovId","wait":true}""").get("detail").asString)
+        val overviewService = OverviewService.getInstance(project)
+        val viewKind = steer.viewerOverview(session, row.entry).viewKind
+        waitFor("tour shown in the tool window") { overviewService.open?.overview?.viewKind == viewKind }
+        assertTrue(steer.sessionOverviews(root).single().shown)
+        val shownDoc = overviewService.open!!
+        assertEquals("Tour", shownDoc.overview.title)
+        assertEquals(2, shownDoc.anchors.size)
+        assertEquals(dev.ggnotes.store.LinkTarget.Anchor("internal/x/gate.go", 4, 4), shownDoc.anchors[1].target)
+        assertEquals("the note", shownDoc.anchors[1].label)
+        assertEquals("no open file nope", post("4-3", """{"id":"4-3","cmd":"file_focus","file_id":"nope","wait":true}""").get("error").asString)
 
         // the user inserts two lines at the top: the note follows its text to line 6 and the box moves
         ApplicationManager.getApplication().invokeAndWait {
             com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) { gateEditor.document.insertString(0, "// one\n// two\n") }
         }
-        waitFor("note re-anchored") { session.memory.findNote("t1")?.start == 6 }
-        val listed = post("3-6", """{"id":"3-6","cmd":"note_list","file":"internal/x/gate.go","wait":true}""").getAsJsonArray("notes")[0].asJsonObject
-        assertEquals(6, listed.get("start").asInt)
-        assertFalse(listed.has("outdated"))
+        waitFor("note re-anchored") { session.marks.placementsOn("internal/x/gate.go").single().second.start == 6 }
         waitFor("box redrawn at line 6") { gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).singleOrNull()?.let { gateEditor.document.getLineNumber(it.offset) } == 5 }
+        ApplicationManager.getApplication().invokeAndWait { gateEditor.caretModel.moveToOffset(0) }
+        assertEquals("opened internal/x/gate.go:6", post("4-4", """{"id":"4-4","cmd":"navigate","step":"next_note","wait":true}""").get("detail").asString)
+        assertEquals("no next note in this diff", post("4-5", """{"id":"4-5","cmd":"navigate","step":"next_note","wait":true}""").get("error").asString)
 
-        // the noted line is edited: the note is outdated and says so
+        // the noted line is edited: the note is outdated and its box says so
         ApplicationManager.getApplication().invokeAndWait {
             com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
                 val l = gateEditor.document.getLineStartOffset(5)
                 gateEditor.document.replaceString(l, gateEditor.document.getLineEndOffset(5), "\treturn !open")
             }
         }
-        waitFor("note outdated") { session.memory.findNote("t1")?.outdated == true }
-        assertTrue(post("3-7", """{"id":"3-7","cmd":"note_show","note_id":"t1","wait":true}""").getAsJsonArray("notes")[0].asJsonObject.get("outdated").asBoolean)
+        waitFor("note outdated") { session.marks.placementsOn("internal/x/gate.go").single().second.outdated }
 
-        // stepping and removal
-        ApplicationManager.getApplication().invokeAndWait { gateEditor.caretModel.moveToOffset(0) }
-        assertEquals("opened internal/x/gate.go:6", post("3-8", """{"id":"3-8","cmd":"navigate","step":"next_note","wait":true}""").get("detail").asString)
-        assertEquals("no next note in this diff", post("3-9", """{"id":"3-9","cmd":"navigate","step":"next_note","wait":true}""").get("error").asString)
-        assertEquals("removed t1", post("3-10", """{"id":"3-10","cmd":"note_rm","note_id":"t1","wait":true}""").get("detail").asString)
-        assertEquals("no note t1", post("3-11", """{"id":"3-11","cmd":"note_rm","note_id":"t1","wait":true}""").get("error").asString)
-        assertEquals("no notes", post("3-12", """{"id":"3-12","cmd":"note_list","wait":true}""").get("detail").asString)
-        waitFor("box removed") { gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).isEmpty() }
-
-        // step 4: in-memory overviews in the overview tool window, with note anchors and unresolved destinations
-        val noted = post("4-0", """{"id":"4-0","cmd":"note_add","file":"internal/x/gate.go","start":5,"end":5,"summary":"the gate","wait":true}""")
-        val noteId = noted.getAsJsonArray("notes")[0].asJsonObject.get("id").asString
-        val tour = "# Tour\n\nStart at [the gate](internal/x/gate.go:5), then [the note](note:$noteId); [gone](internal/nope.go:3) is missing."
-        val addedOv = post("4-1", com.google.gson.JsonObject().apply { addProperty("id", "4-1"); addProperty("cmd", "overview_add"); addProperty("title", "Tour"); addProperty("text", tour); addProperty("wait", true) }.toString())
-        val ovId = Regex("showing (f\\d+)").find(addedOv.get("detail").asString)!!.groupValues[1]
-        assertTrue(addedOv.get("detail").asString, addedOv.get("detail").asString.contains("unresolved: internal/nope.go:3"))
-        val overviewService = OverviewService.getInstance(project)
-        waitFor("tour shown in the tool window") { overviewService.open?.overview?.viewKind == "session:$ovId:" }
-        val shownDoc = overviewService.open!!
-        assertEquals("Tour", shownDoc.overview.title)
-        assertEquals("the note anchor points at the note's lines; the unresolved one is text", 2, shownDoc.anchors.size)
-        assertEquals(dev.ggnotes.store.LinkTarget.Anchor("internal/x/gate.go", 5, 5), shownDoc.anchors[1].target)
-        assertEquals("the note", shownDoc.anchors[1].label)
-        val listedOv = post("4-2", """{"id":"4-2","cmd":"overview_list","wait":true}""")
-        assertEquals("1 overviews", listedOv.get("detail").asString)
-        val row = listedOv.getAsJsonArray("overviews")[0].asJsonObject
-        assertEquals(ovId, row.get("id").asString)
-        assertEquals("shown", row.get("state").asString)
-        assertEquals(3, row.get("anchors").asInt)
-        assertEquals(listOf("internal/nope.go:3"), row.getAsJsonArray("unresolved").map { it.asString })
-        assertEquals(tour, post("4-3", """{"id":"4-3","cmd":"overview_show","file_id":"$ovId","wait":true}""").getAsJsonArray("overviews")[0].asJsonObject.get("text").asString)
-
-        // the walk stays on its anchor across overview_set
+        // a replaced overview file (new size) is REPLACED in place: the open document keeps its anchor, the row stays one
         ApplicationManager.getApplication().invokeAndWait { overviewService.goToAnchor(2, openFile = false) }
-        val setOv = post("4-4", com.google.gson.JsonObject().apply { addProperty("id", "4-4"); addProperty("cmd", "overview_set"); addProperty("file_id", ovId); addProperty("text", "$tour\n\nAnd [more](internal/x/gate.go:1)."); addProperty("wait", true) }.toString())
-        assertEquals("showing $ovId", setOv.get("detail").asString.lines().first())
+        drop("$ovId.md", "+++\ntitle = 'Tour'\nauthor = 'claude'\ncreated = 2026-10-18T15:00:00Z\n+++\n$tour\n\nAnd [more](internal/x/gate.go:1).\n")
+        steer.reloadDocs()
         waitFor("re-rendered with three anchors") { overviewService.open?.anchors?.size == 3 }
         assertEquals(2, overviewService.open!!.currentAnchor)
-        assertEquals("an overview needs text", post("4-5", """{"id":"4-5","cmd":"overview_set","file_id":"$ovId","text":" ","wait":true}""").get("error").asString)
-        assertEquals("no overview f99", post("4-6", """{"id":"4-6","cmd":"overview_show","file_id":"f99","wait":true}""").get("error").asString)
-        val filesWithOv = post("4-7", """{"id":"4-7","cmd":"files","wait":true}""").getAsJsonArray("files").map { it.asJsonObject }
-        val ovEntry = filesWithOv.single { it.get("id").asString == ovId }
-        assertEquals("overview", ovEntry.get("source").asString)
-        assertEquals("Tour", ovEntry.get("title").asString)
-        assertEquals("shown", ovEntry.get("state").asString)
-        assertEquals("focused Tour", post("4-8", """{"id":"4-8","cmd":"file_focus","file_id":"$ovId","wait":true}""").get("detail").asString)
-        assertEquals("added", Regex("added (f\\d+) in the background").find(post("4-9", """{"id":"4-9","cmd":"overview_add","title":"Quiet","text":"nothing","background":true,"wait":true}""").get("detail").asString)!!.groupValues[0].substring(0, 5))
-        assertEquals("closed $ovId", post("4-10", """{"id":"4-10","cmd":"overview_rm","file_id":"$ovId","wait":true}""").get("detail").asString)
-        assertNull(overviewService.open)
-        assertEquals("no overview $ovId", post("4-11", """{"id":"4-11","cmd":"overview_rm","file_id":"$ovId","wait":true}""").get("error").asString)
-        assertEquals("1 overviews", post("4-12", """{"id":"4-12","cmd":"overview_list","wait":true}""").get("detail").asString)
+        assertEquals(1, steer.sessionOverviews(root).size)
+        // a replaced note whose place did not change keeps its placement (outdated at 6, the text is what moved on)
+        drop("n-gate.toml", "path = 'internal/x/gate.go'\nstart = 4\nend = 4\nsummary = 'Returns the flag!'\nauthor = 'ada'\nlines = ['\treturn open']\n")
+        steer.reloadDocs()
+        waitFor("summary replaced") { session.marks.placementsOn("internal/x/gate.go").singleOrNull()?.first?.summary == "Returns the flag!" }
+        assertEquals(dev.ggnotes.session.Placement(6, 6, true), session.marks.placementsOn("internal/x/gate.go").single().second)
+
+        // gone: the overview's file is removed → the row goes and the document closes
+        Files.delete(docs.resolve("$ovId.md"))
+        steer.reloadDocs()
+        // the index empties inside the reconcile; the close that follows it is posted to the EDT, so wait for it too
+        waitFor("row gone") { steer.sessionOverviews(root).isEmpty() }
+        waitFor("the removed overview's document closes") { overviewService.open == null }
+
+        // Delete (the tree's and the editor's menu items) unlinks the file; nothing else is ever deleted
+        drop("n-two.toml", "path = 'internal/x/gate.go'\nstart = 1\nend = 1\nsummary = 'two'\nlines = ['// one']\n")
+        drop("n-other.toml", "path = 'internal/y/call.go'\nstart = 1\nend = 1\nsummary = 'other'\nlines = ['package y']\n")
+        drop("$ovId.md", "+++\ntitle = 'Again'\n+++\ntext\n")
+        steer.reloadDocs()
+        waitFor("two notes on gate.go") { session.marks.placementsOn("internal/x/gate.go").size == 2 }
+        assertTrue(steer.deleteNote(session, "n-gate"))
+        assertFalse(Files.exists(docs.resolve("n-gate.toml")))
+        assertFalse(steer.deleteNote(session, "n-gate"))
+        waitFor("one box left") { gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).size == 1 }
+        assertEquals(1, steer.deleteNotesOn(session, "internal/x/gate.go"))
+        assertTrue("another file's note stays", Files.exists(docs.resolve("n-other.toml")))
+        waitFor("no boxes") { gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).isEmpty() }
+        waitFor("the row is back") { steer.sessionOverviews(root).size == 1 }
+        assertTrue(steer.deleteOverview(session, ovId))
+        assertFalse(Files.exists(docs.resolve("$ovId.md")))
+        waitFor("row gone again") { steer.sessionOverviews(root).isEmpty() }
+        assertEquals("the other note file is the only one left", listOf("n-other.toml"), Files.list(docs).use { it.map { f -> f.fileName.toString() }.toList() })
     }
 
     fun testOverviewIsListedOpenedAndItsAnchorOpensTheCommittedFile() {
@@ -536,45 +562,43 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
     }
 
     /**
-     * In-memory overviews (`gg session overview add --to ide`) are rows of the tool window too:
-     * the steer service lists them per git root with their shown state, tells the panel when
-     * they change, and drops them on `overview_rm` (and with the project, nothing is stored).
+     * Session overviews are the files of the worktree's docs directory: the steer service lists
+     * them per git root newest first with their shown state and tells the panel on every change;
+     * a file that does not parse is no row; Delete unlinks the file and the rest follows.
      */
-    fun testSessionOverviewsAreListedForTheTreeAndVanishWhenRemoved() {
+    fun testSessionDocsRowsFollowTheDirectory() {
         val steer = dev.ggnotes.steer.SteerService.getInstance(project)
         val session = ApplicationManager.getApplication().executeOnPooledThread<List<dev.ggnotes.steer.SteerService.RootSession>> { steer.startSync() }.get().single()
-        val ide = session.ideDir
         var changes = 0
         steer.addSessionListener(testRootDisposable) { changes++ }
-        fun post(id: String, body: String): com.google.gson.JsonObject {
-            Files.writeString(ide.resolve(".tmp-$id"), body)
-            Files.move(ide.resolve(".tmp-$id"), ide.resolve("cmd-$id.json"))
-            waitFor("reply $id") { Files.isRegularFile(ide.resolve("reply-$id.json")) }
-            return com.google.gson.JsonParser.parseString(Files.readString(ide.resolve("reply-$id.json"))).asJsonObject
-        }
-        assertEquals(emptyList<String>(), steer.sessionOverviews(root).map { it.overview.id })
-
-        val shown = post("7-1", """{"id":"7-1","cmd":"overview_add","title":"Tour","text":"- [gate](internal/x/gate.go:3)","wait":true}""")
-        val shownId = Regex("showing (f\\d+)").find(shown.get("detail").asString)!!.groupValues[1]
-        val quiet = post("7-2", """{"id":"7-2","cmd":"overview_add","title":"Quiet","text":"nothing","background":true,"wait":true}""")
-        val quietId = Regex("added (f\\d+) in the background").find(quiet.get("detail").asString)!!.groupValues[1]
+        assertEquals(emptyList<String>(), steer.sessionOverviews(root).map { it.entry.doc.id })
+        val docs = session.docsDir
+        Files.createDirectories(docs)
+        Files.writeString(docs.resolve("old.md"), "+++\ntitle = 'Old'\ncreated = 2026-10-18T10:00:00Z\n+++\n- [gate](internal/x/gate.go:3)\n")
+        Files.writeString(docs.resolve("new.md"), "+++\ntitle = 'New'\ncreated = 2026-10-18T12:00:00Z\n+++\nnothing\n")
+        Files.writeString(docs.resolve("bad.md"), "no front matter\n")
+        Files.writeString(docs.resolve(".new.ab12.tmp"), "+++\ntitle = 'Half written'\n+++\nx\n")
+        steer.reloadDocs()
         waitFor("rows") { steer.sessionOverviews(root).size == 2 }
         val rows = steer.sessionOverviews(root)
-        assertEquals(listOf(shownId to "Tour", quietId to "Quiet"), rows.map { it.overview.id to it.overview.title })
-        assertEquals("the one on screen is marked shown", listOf(true, false), rows.map { it.shown })
-        assertTrue("the panel was told", changes >= 2)
-        assertEquals("session:$shownId:", steer.viewerOverview(session, rows[0].overview).viewKind)
+        assertEquals(listOf("new" to "New", "old" to "Old"), rows.map { it.entry.doc.id to it.entry.doc.title })
+        assertEquals(listOf(false, false), rows.map { it.shown })
+        assertTrue("the panel was told", changes >= 1)
+
+        steer.showOverview(session, rows[1].entry, keepAnchor = false)
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertEquals(listOf(false, true), steer.sessionOverviews(root).map { it.shown })
+        assertEquals(steer.viewerOverview(session, rows[1].entry).viewKind, OverviewService.getInstance(project).open?.overview?.viewKind)
+        assertEquals(1, OverviewService.getInstance(project).open?.anchors?.size)
 
         val before = changes
-        assertEquals("closed $shownId", post("7-3", """{"id":"7-3","cmd":"overview_rm","file_id":"$shownId","wait":true}""").get("detail").asString)
-        waitFor("row gone") { steer.sessionOverviews(root).map { it.overview.id } == listOf(quietId) }
-        assertTrue(changes > before)
-        assertNull("the removed overview's document closed", OverviewService.getInstance(project).open)
-
-        // the IDE-side removal (the tree's context menu) is the same drop
-        assertTrue(steer.removeOverview(session, quietId))
-        assertEquals(emptyList<String>(), steer.sessionOverviews(root).map { it.overview.id })
-        assertFalse(steer.removeOverview(session, quietId))
+        assertTrue(steer.deleteOverview(session, "old"))
+        waitFor("row gone") { steer.sessionOverviews(root).map { it.entry.doc.id } == listOf("new") }
+        waitFor("the panel was told of the drop") { changes > before }
+        waitFor("the deleted overview's document closes") { OverviewService.getInstance(project).open == null }
+        assertFalse(steer.deleteOverview(session, "old"))
+        assertTrue("the half-written file is nobody's to touch", Files.exists(docs.resolve(".new.ab12.tmp")))
+        assertTrue(Files.exists(docs.resolve("bad.md")))
     }
 
     private fun waitFor(what: String, condition: () -> Boolean) {

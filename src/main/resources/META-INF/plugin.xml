@@ -152,6 +152,13 @@
         </action>
         <action id="GgNotes.Close" class="dev.ggnotes.overview.CloseOverviewAction"/>
         <action id="GgNotes.DocumentOnly" class="dev.ggnotes.overview.DocumentOnlyAction"/>
+        <!-- the editor's menu on a file that carries session notes (session-docs SPEC §4.4: Delete is a row/marker action) -->
+        <action id="GgNotes.DeleteSessionNote" class="dev.ggnotes.steer.DeleteSessionNoteAction">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+        <action id="GgNotes.DeleteSessionNotesOnFile" class="dev.ggnotes.steer.DeleteSessionNotesOnFileAction">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
         <group id="GgNotes.Toolbar">
             <reference ref="GgNotes.Refresh"/>
             <separator/>

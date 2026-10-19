@@ -29,7 +29,7 @@ class WireTest {
     }
 
     @Test
-    fun `a minimal command has defaults and the note and overview fields parse`() {
+    fun `a minimal command has defaults and the retired verbs' fields still parse`() {
         val n = Wire.parseCommand("""{"id":"2-2","cmd":"note_add","file":"a.go","start":3,"end":4,"summary":"s","rationale":"r","author":"me","meta":{"k":"v"},"display":{"k":{"show":["badge"]}}}""")!!
         assertEquals(3, n.start)
         assertEquals(4, n.end)
@@ -56,9 +56,9 @@ class WireTest {
         assertEquals("f1", parsed.getAsJsonArray("files")[0].asJsonObject.get("id").asString)
         assertFalse(parsed.has("detail"))
         assertFalse(parsed.getAsJsonArray("files")[0].asJsonObject.has("title"))
-        val notes = Wire.toJson(Reply.ok("1-4", "").copy(notes = listOf(NoteWire("t1", "f1", "a.go", 3, 4, "s", null, "agent", false, listOf("x", "y"), null, null))))
-        val np = JsonParser.parseString(notes).asJsonObject.getAsJsonArray("notes")[0].asJsonObject
-        assertEquals(2, np.getAsJsonArray("text").size())
-        assertFalse("false booleans stay out like gg's omitempty", np.has("outdated"))
+        val quiet = Wire.toJson(Reply.ok("1-4", "").copy(files = listOf(OpenFileWire("f1", "a.go", "worktree", null, null, 0, "background", 0))))
+        val fp = JsonParser.parseString(quiet).asJsonObject.getAsJsonArray("files")[0].asJsonObject
+        assertFalse("zero counts stay out like gg's omitempty", fp.has("notes"))
+        assertFalse(fp.has("line"))
     }
 }

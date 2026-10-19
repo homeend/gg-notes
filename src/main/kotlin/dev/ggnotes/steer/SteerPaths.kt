@@ -27,7 +27,11 @@ object SteerPaths {
     /** The IDE's own sub-inbox (SPEC §2.1). */
     fun ideDir(inbox: Path): Path = inbox.resolve(IDE_DIR)
 
+    /** The worktree's session documents (session-docs SPEC §2): `<inbox>/docs/`, flat; created by writers, never by this reader. */
+    fun docsDir(inbox: Path): Path = inbox.resolve(DOCS_DIR)
+
     const val IDE_DIR = "ide"
+    const val DOCS_DIR = "docs"
     const val PRESENCE = "ide.json"
 
     /** The state base of this process: `$XDG_STATE_HOME`, `%LocalAppData%`, `~/.local/state` (the notes-store rule). */

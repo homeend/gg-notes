@@ -24,7 +24,11 @@ import java.util.concurrent.TimeUnit
  * One steering inbox per git root (steer SPEC §2): presence in `ide.json`
  * touched every second, the `ide/` sub-inbox drained every 500 ms (plus a
  * directory watcher), each command handed to [SteerHandler] on a single
- * worker thread, in order, and answered when it asked to wait.
+ * worker thread, in order, and answered when it asked to wait. The same
+ * inbox holds the worktree's session documents (`docs/`, session-docs SPEC
+ * §2): the directory is reconciled every 2 s and on every watcher wake, its
+ * overviews are the tool window's session rows and its notes are boxes on
+ * the editors ([SessionNoteMarks]).
  */
 @Service(Service.Level.PROJECT)
 class SteerService(private val project: Project) : Disposable {
@@ -33,10 +37,12 @@ class SteerService(private val project: Project) : Disposable {
         private val LOG = logger<SteerService>()
         const val POLL_MILLIS = 500L
         const val TOUCH_MILLIS = 1000L
+        /** Session-docs SPEC §4.2: the poll that backs the watcher. */
+        const val DOCS_POLL_MILLIS = 2000L
         fun getInstance(project: Project): SteerService = project.getService(SteerService::class.java)
     }
 
-    /** A root's inbox and the memory of what the agent opened there. */
+    /** A root's inbox, the memory of what the agent opened there, and its session documents. */
     class RootSession(
         val repo: GitRepository,
         /** `git rev-parse --show-toplevel`, the string gg hashes and the one in `ide.json`. */
@@ -46,22 +52,26 @@ class SteerService(private val project: Project) : Disposable {
         val memory: SessionMemory,
     ) {
         val ideDir: Path get() = SteerPaths.ideDir(inbox)
+        /** The worktree's session documents directory (`<inbox>/docs/`); may not exist yet, and this reader never creates it. */
+        val docsDir: Path get() = SteerPaths.docsDir(inbox)
+        /** The session documents as last reconciled. */
+        val docs = dev.ggnotes.session.DocFolder(SteerPaths.docsDir(inbox))
         /** The virtual file behind each open-files entry (IDE side of [SessionMemory]). */
         val files = ConcurrentHashMap<String, VirtualFile>()
         /** Live `highlight` markers; cleared by `highlight_clear` or when their file closes. */
         val highlights = java.util.concurrent.CopyOnWriteArrayList<com.intellij.openapi.editor.markup.RangeHighlighter>()
-        /** The boxes and listeners of the temporary notes; set by the service. */
-        lateinit var notes: TempNotes
+        /** The session notes on the editors; set by the service. */
+        lateinit var marks: SessionNoteMarks
 
-        /** A file the user closed leaves the list with its highlights and notes (PLUGIN.md §5). */
+        /** A file the user closed leaves the list with its highlights; its note boxes go until it opens again (PLUGIN.md §5). */
         fun fileClosed(vf: VirtualFile) {
             for ((id, f) in files.entries.toList()) {
                 if (f == vf) {
                     files.remove(id)
                     memory.removeFile(id)
-                    notes.fileClosed(id)
                 }
             }
+            marks.fileClosed(vf)
             highlights.removeIf { h ->
                 val closed = !h.isValid || com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getFile(h.document) == vf
                 if (closed) runCatching { if (h.isValid) h.dispose() }
@@ -74,7 +84,10 @@ class SteerService(private val project: Project) : Disposable {
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "GgNotes steer").apply { isDaemon = true } }
     private var touchTask: ScheduledFuture<*>? = null
     private var pollTask: ScheduledFuture<*>? = null
+    private var docsTask: ScheduledFuture<*>? = null
     private var watcher: InboxWatcher? = null
+    /** The docs directories the watcher already covers (they appear after start, when a writer creates them). */
+    private val watchedDocs = java.util.concurrent.ConcurrentHashMap.newKeySet<Path>()
     @Volatile private var started = false
     val handler = SteerHandler(project, this)
 
@@ -89,7 +102,10 @@ class SteerService(private val project: Project) : Disposable {
                 for (repo in GitRepositoryManager.getInstance(project).repositories) register(repo)
                 touchTask = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay({ touchAll() }, TOUCH_MILLIS, TOUCH_MILLIS, TimeUnit.MILLISECONDS)
                 pollTask = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay({ drainAll() }, POLL_MILLIS, POLL_MILLIS, TimeUnit.MILLISECONDS)
-                watcher = InboxWatcher(sessions.values.map { it.ideDir }) { drainAll() }.also { it.start() }
+                docsTask = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay({ reloadDocs() }, DOCS_POLL_MILLIS, DOCS_POLL_MILLIS, TimeUnit.MILLISECONDS)
+                // the inbox itself is watched too: that is where a writer creates docs/
+                watcher = InboxWatcher(sessions.values.flatMap { listOf(it.ideDir, it.inbox) }) { drainAll(); reloadDocs() }.also { it.start() }
+                watchDocsDirs()
             } catch (t: Throwable) {
                 LOG.warn("GgNotes steer: start failed", t)
             }
@@ -110,6 +126,7 @@ class SteerService(private val project: Project) : Disposable {
         for (repo in GitRepositoryManager.getInstance(project).repositories) register(repo)
         if (touchTask == null) touchTask = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay({ touchAll() }, TOUCH_MILLIS, TOUCH_MILLIS, TimeUnit.MILLISECONDS)
         if (pollTask == null) pollTask = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay({ drainAll() }, POLL_MILLIS, POLL_MILLIS, TimeUnit.MILLISECONDS)
+        if (docsTask == null) docsTask = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay({ reloadDocs() }, DOCS_POLL_MILLIS, DOCS_POLL_MILLIS, TimeUnit.MILLISECONDS)
         started = true
         return sessions.values.toList()
     }
@@ -131,7 +148,7 @@ class SteerService(private val project: Project) : Disposable {
         )
         Presence.write(inbox, json)
         val session = RootSession(repo, top, inbox, json, SessionMemory(top))
-        session.notes = TempNotes(project, session, this)
+        session.marks = SessionNoteMarks(project, session, this)
         sessions[repo.root.path] = session
         LOG.info("GgNotes steer: presence for ${repo.root.name} at $inbox")
         return session
@@ -141,14 +158,14 @@ class SteerService(private val project: Project) : Disposable {
 
     fun allSessions(): Collection<RootSession> = sessions.values
 
-    // ---- in-memory overviews as the tool window sees them --------------------------------
+    // ---- session documents as the tool window sees them ----------------------------------
 
-    /** One row of the tool window's "this session" group: an in-memory overview and whether it is on screen. */
-    class SessionRow(val session: RootSession, val overview: SessionMemory.Overview, val shown: Boolean)
+    /** One row of the tool window's session group: an overview file, whether it is on screen, and its unresolved anchors. */
+    class SessionRow(val session: RootSession, val entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionOverviewDoc>, val shown: Boolean, val unresolved: List<String>)
 
     private val sessionListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
 
-    /** Told (on any thread) whenever an in-memory overview is added, replaced, shown or removed. */
+    /** Told (on any thread) whenever a session document appears, changes, is shown or goes. */
     fun addSessionListener(parent: Disposable, listener: () -> Unit) {
         sessionListeners.add(listener)
         com.intellij.openapi.util.Disposer.register(parent) { sessionListeners.remove(listener) }
@@ -158,46 +175,114 @@ class SteerService(private val project: Project) : Disposable {
         for (l in sessionListeners) runCatching { l() }.onFailure { LOG.warn("GgNotes steer: session listener", it) }
     }
 
-    /** The in-memory overviews of [root], in creation order; empty when the root has no session (yet). */
-    fun sessionOverviews(root: VirtualFile): List<SessionRow> {
-        val s = sessions[root.path] ?: return emptyList()
-        return s.memory.overviews().map { SessionRow(s, it, isShown(s, it)) }
+    /** Reconcile every root's docs directory now, on the worker (the 2 s poll and the watcher call this). */
+    fun reloadDocs() {
+        if (project.isDisposed) return
+        runCatching {
+            worker.execute {
+                for (s in sessions.values) {
+                    val changes = runCatching { s.docs.reload() }.getOrElse { LOG.warn("GgNotes: reading ${s.docsDir}", it); null } ?: continue
+                    if (!changes.isEmpty) docsChanged(s, changes)
+                }
+            }
+        }
     }
 
-    /** The session overview as the overview viewer shows it: live anchors into the worktree, note anchors rewritten. */
-    fun viewerOverview(s: RootSession, o: SessionMemory.Overview): dev.ggnotes.store.Overview {
-        val md = s.memory.viewerMarkdown(o)
+    /** Worker: the directory changed — boxes follow, a replaced open overview is re-rendered in place, a gone one closes, the tree is told. */
+    private fun docsChanged(s: RootSession, changes: dev.ggnotes.session.DocIndex.Changes) {
+        LOG.info("GgNotes: session docs of ${s.repo.root.name}: +${changes.added.size} ~${changes.replaced.size} -${changes.removed.size}")
+        if (changes.notesChanged) s.marks.docsChanged()
+        val open = dev.ggnotes.overview.OverviewService.getInstance(project).open?.overview
+        for (name in changes.replaced) {
+            if (name.kind != dev.ggnotes.session.DocKind.OVERVIEW || open?.viewKind != viewKind(s, name.id)) continue
+            val entry = s.docs.index.overview(name.id) ?: continue
+            showOverview(s, entry, keepAnchor = true)
+        }
+        for (name in changes.removed) {
+            if (name.kind == dev.ggnotes.session.DocKind.OVERVIEW && open?.viewKind == viewKind(s, name.id)) onEdt { dev.ggnotes.overview.OverviewService.getInstance(project).close() }
+        }
+        sessionChanged()
+    }
+
+    /** The session overviews of [root] newest first; empty when the root has no session or no docs directory (yet). */
+    fun sessionOverviews(root: VirtualFile): List<SessionRow> {
+        val s = sessions[root.path] ?: return emptyList()
+        return s.docs.index.overviews().map { SessionRow(s, it, isShown(s, it.doc.id), unresolved(s, it.doc)) }
+    }
+
+    /** SPEC §3.2: anchors whose file is not in the worktree or whose note is not in the directory. */
+    fun unresolved(s: RootSession, doc: dev.ggnotes.session.SessionOverviewDoc): List<String> = doc.anchors.filter { a ->
+        if (a.note != null) s.docs.index.note(a.note) == null
+        else s.repo.root.findFileByRelativePath(a.path!!)?.let { it.isDirectory } != false
+    }.map { it.dest }
+
+    /** The viewer's identity of a session overview: the root is part of it, ids being unique per worktree only. */
+    fun viewKind(s: RootSession, id: String): String = "session:${s.topLevel}\u0000$id:"
+
+    /** The session overview as the overview viewer shows it: live anchors into the worktree, note anchors rewritten to the note's lines now. */
+    fun viewerOverview(s: RootSession, entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionOverviewDoc>): dev.ggnotes.store.Overview {
+        val doc = entry.doc
+        val unresolved = unresolved(s, doc).toSet()
+        val md = SessionAnchors.rewrite(doc.body, unresolved) { noteId ->
+            s.docs.index.note(noteId)?.let { n ->
+                val p = s.marks.placementOf(n.doc)
+                n.doc.path + ":" + p.start + (if (p.end != p.start) "-" + p.end else "")
+            }
+        }
         return dev.ggnotes.store.Overview(
-            id = o.id, title = o.title, author = "agent", commit = "", branch = "", preview = null, prNumber = null,
-            created = null, updated = java.time.OffsetDateTime.now(),
-            document = dev.ggnotes.store.DocumentResult.Ok(dev.ggnotes.store.OverviewDocument(o.title, md.ifBlank { "_(empty)_" }, emptyList())),
-            sourceFile = s.inbox, viewKind = "session:${o.id}:", liveWorktree = s.topLevel,
+            id = doc.id, title = doc.title, author = doc.author, commit = "", branch = "", preview = null, prNumber = null,
+            created = doc.created, updated = java.time.OffsetDateTime.ofInstant(Instant.ofEpochMilli(entry.time), java.time.ZoneOffset.UTC),
+            document = dev.ggnotes.store.DocumentResult.Ok(dev.ggnotes.store.OverviewDocument(doc.title, md.ifBlank { "_(empty)_" }, emptyList())),
+            sourceFile = s.docs.fileOf(dev.ggnotes.session.DocName(doc.id, dev.ggnotes.session.DocKind.OVERVIEW)),
+            viewKind = viewKind(s, doc.id), liveWorktree = s.topLevel,
         )
     }
 
-    fun isShown(s: RootSession, o: SessionMemory.Overview): Boolean =
-        dev.ggnotes.overview.OverviewService.getInstance(project).open?.overview?.identity == viewerOverview(s, o).identity
+    fun isShown(s: RootSession, id: String): Boolean =
+        dev.ggnotes.overview.OverviewService.getInstance(project).open?.overview?.viewKind == viewKind(s, id)
 
-    /** Open [o] in the tool window, synchronously on the EDT; [keepAnchor] is `overview_set`'s in-place path. */
-    fun showOverview(s: RootSession, o: SessionMemory.Overview, keepAnchor: Boolean) {
-        val overview = viewerOverview(s, o)
+    /** Open [entry] in the tool window, synchronously on the EDT; [keepAnchor] re-renders a replaced document on the same anchor. */
+    fun showOverview(s: RootSession, entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionOverviewDoc>, keepAnchor: Boolean) {
+        val overview = viewerOverview(s, entry)
         onEdt {
             val service = dev.ggnotes.overview.OverviewService.getInstance(project)
             if (keepAnchor) service.openKeepingAnchor(overview, s.repo) else service.open(overview, s.repo)
             com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(dev.ggnotes.overview.OverviewService.TOOL_WINDOW_ID)?.show()
         }
-        s.memory.markShown(o.id)
         sessionChanged()
     }
 
-    /** Drop in-memory overview [id] (the tree's Remove, `overview_rm`): closes its document when it is on screen. */
-    fun removeOverview(s: RootSession, id: String): Boolean {
-        val o = s.memory.findOverview(id) ?: return false
-        val shown = isShown(s, o)
-        s.memory.removeOverview(id)
-        if (shown) onEdt { dev.ggnotes.overview.OverviewService.getInstance(project).close() }
-        sessionChanged()
-        return true
+    /** Delete (the tree's row action): unlink the overview's file; the reconcile that follows drops the row and closes its document. */
+    fun deleteOverview(s: RootSession, id: String): Boolean {
+        val gone = s.docs.delete(dev.ggnotes.session.DocName(id, dev.ggnotes.session.DocKind.OVERVIEW))
+        reloadDocs()
+        return gone
+    }
+
+    /** Delete (the editor's menu): unlink one note's file. */
+    fun deleteNote(s: RootSession, id: String): Boolean {
+        val gone = s.docs.delete(dev.ggnotes.session.DocName(id, dev.ggnotes.session.DocKind.NOTE))
+        reloadDocs()
+        return gone
+    }
+
+    /** "Delete all notes on this file": unlink every note file naming [path]; returns how many went. */
+    fun deleteNotesOn(s: RootSession, path: String): Int {
+        val n = s.docs.index.notesOn(path).count { s.docs.delete(dev.ggnotes.session.DocName(it.doc.id, dev.ggnotes.session.DocKind.NOTE)) }
+        reloadDocs()
+        return n
+    }
+
+    private val retiredNoticed = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** A gg older than the session-docs contract sent an in-memory verb: say so once per root and verb, the reply names the fix. */
+    fun noteRetiredVerb(s: RootSession, verb: String) {
+        if (!retiredNoticed.add(s.repo.root.path + "\u0000" + verb)) return
+        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater({
+            com.intellij.notification.NotificationGroupManager.getInstance().getNotificationGroup("GgNotes")
+                .createNotification(dev.ggnotes.GgNotesBundle.message("steer.retired", verb, s.docsDir.toString()), com.intellij.notification.NotificationType.WARNING)
+                .notify(project)
+        }, project.disposed)
     }
 
     private fun onEdt(block: () -> Unit) {
@@ -205,13 +290,24 @@ class SteerService(private val project: Project) : Disposable {
         if (app.isDispatchThread) { if (!project.isDisposed) block() } else app.invokeAndWait { if (!project.isDisposed) block() }
     }
 
+    /** Watch every docs directory that exists now (a writer may create one at any time; the poll covers the gap). */
+    private fun watchDocsDirs() {
+        val w = watcher ?: return
+        for (s in sessions.values) {
+            if (s.docsDir in watchedDocs || !Files.isDirectory(s.docsDir)) continue
+            w.add(s.docsDir)
+            watchedDocs.add(s.docsDir)
+        }
+    }
+
     /** Every second: keep presence fresh, and publish it for roots git4idea detected after project open. */
     private fun touchAll() {
         if (project.isDisposed) return
         runCatching {
             for (repo in GitRepositoryManager.getInstance(project).repositories) {
-                if (!sessions.containsKey(repo.root.path)) register(repo)?.let { watcher?.add(it.ideDir) }
+                if (!sessions.containsKey(repo.root.path)) register(repo)?.let { watcher?.add(it.ideDir); watcher?.add(it.inbox) }
             }
+            watchDocsDirs()
         }.onFailure { LOG.warn("GgNotes steer: registering roots", it) }
         for (s in sessions.values) runCatching { Presence.touch(s.inbox, s.presenceJson) }
     }
@@ -244,6 +340,7 @@ class SteerService(private val project: Project) : Disposable {
     override fun dispose() {
         touchTask?.cancel(false)
         pollTask?.cancel(false)
+        docsTask?.cancel(false)
         watcher?.stop()
         worker.shutdownNow()
         for (s in sessions.values) Presence.remove(s.inbox)
