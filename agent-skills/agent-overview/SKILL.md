@@ -1,14 +1,14 @@
 ---
-name: air-overview
-description: Use when the user asks to present, visualise or walk them through a result or a change in their JetBrains IDE (with the gg-notes plugin) — notes on the exact lines plus an overview whose links open the code.
+name: agent-overview
+description: Use when the user asks to present, visualise or walk them through a result or a change in their JetBrains IDE (with the AgentNotes plugin) — notes on the exact lines plus an overview whose links open the code.
 argument-hint: "[what to present]"
 ---
 
-# air-overview — present a result in the IDE
+# agent-overview — present a result in the IDE
 
 An **overview** is a short markdown document whose links are anchors into
 the code, plus your **notes** on the exact lines. The user opens the
-overview in the IDE's tool window ("This session"), walks the anchors top
+overview in the IDE's Agent Notes tool window ("Session" group), walks the anchors top
 to bottom, and each one opens the file at the place you named, with your
 note beside it. Present the result this way instead of a long chat answer.
 

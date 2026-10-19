@@ -1,8 +1,8 @@
-# Files — how an air skill writes notes and overviews
+# Files — how an agent skill writes notes and overviews
 
-The IDE's notes plugin (gg-notes) watches one directory per worktree. Every
+The IDE's AgentNotes plugin watches one directory per worktree. Every
 file you put there shows up in the IDE: an **overview** (`<id>.md`) as a row
-of the tool window's "This session" group, a **note** (`<id>.toml`) as a
+of the Agent Notes tool window's "Session" group, a **note** (`<id>.toml`) as a
 read-only remark box beside its lines in the editor. Nothing else is needed:
 no server, no command, no running process of yours. A file stays until the
 user deletes it in the IDE (tree context menu → Delete) or you remove it.
@@ -178,8 +178,8 @@ mv "$inbox/ide/.$cid.tmp" "$inbox/ide/cmd-$cid.json"
 
 Then read `$inbox/ide/reply-$cid.json` for at most 2 seconds
 (`{"ok":true,"detail":"focused overview <id> \"<title>\""}`). No reply, or
-no fresh `ide.json`: say in one line that the overview is in the IDE's
-"This session" group, and go on. Never wait longer, never retry.
+no fresh `ide.json`: say in one line that the overview is in the Agent Notes tool window's
+"Session" group, and go on. Never wait longer, never retry.
 
 ## 7. Check before you report
 
