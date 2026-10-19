@@ -124,7 +124,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         listPane.add(ScrollPaneFactory.createScrollPane(tree), BorderLayout.CENTER)
 
         splitter.firstComponent = if (service.listHidden) null else listPane
-        splitter.secondComponent = document
+        splitter.secondComponent = if (service.open == null) null else document
         setContent(splitter)
         // the tree takes what its rows need, up to TreeShare.MAX_SHARE of the window, until the user drags the divider
         // (a drag on the divider itself, never a proportion event: the splitter fires those on its own too)
@@ -310,11 +310,39 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
 
     override fun showOverview(open: OpenOverview?) {
         document.show(open)
-        if (open != null) selectIdentity(open.overview.identity, open.repo)
-        // "document only" with no document would show only the placeholder: bring the list back
-        if (open == null && service.listHidden) service.setListHidden(false)
+        if (open != null) {
+            selectIdentity(open.overview.identity, open.repo)
+        } else {
+            // Close leaves no row selected: a selected row stays "shown" to the tree, so a click on
+            // it would fire no selection change and the document could not be reopened from it
+            syncing = true
+            try {
+                tree.clearSelection()
+            } finally {
+                syncing = false
+            }
+            // "document only" with no document would show only the placeholder: bring the list back
+            if (service.listHidden) service.setListHidden(false)
+        }
+        showDocumentPane(open != null)
         tree.repaint() // the session rows' "on screen" badge follows the open document
     }
+
+    /** With nothing open the document half leaves the splitter and the list takes the whole window. */
+    private fun showDocumentPane(visible: Boolean) {
+        val shown = splitter.secondComponent != null
+        if (shown == visible) return
+        splitter.secondComponent = if (visible) document else null
+        splitter.revalidate()
+        splitter.repaint()
+        if (visible) fitTree()
+    }
+
+    /** The selected row's user object, for tests. */
+    internal val selectedRow: Any? get() = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject
+
+    /** Whether the document half is in the splitter, for tests. */
+    internal val documentShown: Boolean get() = splitter.secondComponent != null
 
     override fun showAnchor(n: Int) = document.scrollToAnchor(n)
 

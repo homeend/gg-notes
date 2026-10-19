@@ -59,7 +59,10 @@ class BackToOverviewAction : AnAction(AllIcons.Actions.PreviewDetails), DumbAwar
 class DocumentOnlyAction : AnAction(AllIcons.General.FitContent), DumbAware, com.intellij.openapi.actionSystem.Toggleable {
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
     override fun update(e: AnActionEvent) {
-        val hidden = e.service()?.listHidden == true
+        val s = e.service()
+        val hidden = s?.listHidden == true
+        // nothing open = nothing to give the whole window to; the toggle stays usable only to bring a hidden list back
+        e.presentation.isEnabled = s != null && (s.open != null || hidden)
         com.intellij.openapi.actionSystem.Toggleable.setSelected(e.presentation, hidden)
         e.presentation.text = dev.ggnotes.GgNotesBundle.message(if (hidden) "action.GgNotes.DocumentOnly.showList" else "action.GgNotes.DocumentOnly.text")
     }
