@@ -1,1 +1,1 @@
-rootProject.name = "gg-notes"
+rootProject.name = "agent-notes"

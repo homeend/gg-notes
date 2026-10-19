@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the distributable GgNotes plugin zip.
+# Build the distributable AgentNotes plugin zip.
 # Usage: ./dist.sh [deploy-dir]
 #   deploy-dir (optional): existing content is removed, then the fresh zip is copied in.
 # Needs a JDK 17-23 (NOT 25) — set JAVA_HOME or let the sdkman fallback pick one.

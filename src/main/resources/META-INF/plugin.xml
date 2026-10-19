@@ -2,16 +2,16 @@
     <!-- id and name freeze on first Marketplace publication: pick final values
          before the first upload, never rename afterwards. -->
     <id>dev.ggnotes</id>
-    <name>GgNotes</name>
-    <vendor email="homeend@wp.pl">gg-notes</vendor>
+    <name>AgentNotes</name>
+    <vendor email="homeend@wp.pl">agent-notes</vendor>
     <description><![CDATA[
-        <p>GgNotes shows the <b>overviews</b> that the
+        <p>AgentNotes shows the <b>overviews</b> that the
         <a href="https://gigagit.code-drill.eu/">gigagit</a> CLI (<code>gg</code>) stores for a
         repository: an AI agent's markdown document whose links are anchors into the code at one
         commit, plus remarks on exact lines. The same overview the user sees in gg, read from the
         same files on disk, with no gg running.</p>
         <ul>
-            <li>The <b>GgNotes</b> tool window lists the overviews of the open repository, grouped by
+            <li>The <b>Overviews</b> tool window lists the overviews of the open repository, grouped by
                 commit (HEAD's first, then newest).</li>
             <li>Selecting one renders its document; anchors are links numbered in document order,
                 with next/previous-anchor actions.</li>
@@ -23,6 +23,14 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.4.0</h3>
+        <ul>
+            <li>The plugin is now <b>AgentNotes</b> (it was GgNotes); the distribution is
+                <code>agent-notes-&lt;version&gt;.zip</code>. The plugin id is unchanged, so installing
+                this zip replaces the GgNotes plugin in place: keymaps, the tool window's place and its
+                settings carry over.</li>
+        </ul>
+
         <h3>0.3.3</h3>
         <ul>
             <li>Double-click a row to open it with the document taking the whole window (the
@@ -175,7 +183,7 @@
     <depends>Git4Idea</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <notificationGroup id="GgNotes" displayType="BALLOON"/>
+        <notificationGroup id="GgNotes" displayType="BALLOON" key="notification.group.name"/>
         <postStartupActivity implementation="dev.ggnotes.startup.GgNotesStartupActivity"/>
         <!-- The id is frozen like the plugin name (layouts and code refer to it); the visible stripe
              title comes from the bundle key toolwindow.stripe.GgNotes ("Overviews"). -->
