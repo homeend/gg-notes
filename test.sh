@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the full GgNotes test suite.
+# Run the full AgentNotes test suite.
 # Extra args pass through to Gradle, e.g.: ./test.sh --tests "dev.ggnotes.*"
 # Needs a JDK 17-23 (NOT 25) — set JAVA_HOME or let the sdkman fallback pick one.
 set -euo pipefail

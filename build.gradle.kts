@@ -14,7 +14,7 @@ group = "dev.ggnotes"
 val gitShortSha = providers.exec {
     commandLine("git", "rev-parse", "--short", "HEAD")
 }.standardOutput.asText.map { it.trim() }
-version = "0.3.3+" + runCatching { gitShortSha.get().ifEmpty { "dev" } }.getOrDefault("dev")
+version = "0.4.0+" + runCatching { gitShortSha.get().ifEmpty { "dev" } }.getOrDefault("dev")
 
 repositories {
     mavenCentral()
@@ -46,7 +46,7 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         id = "dev.ggnotes"
-        name = "GgNotes"
+        name = "AgentNotes"
         version = project.version.toString()
         ideaVersion {
             sinceBuild = "242"

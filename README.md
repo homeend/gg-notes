@@ -1,4 +1,4 @@
-# GgNotes
+# AgentNotes
 
 IntelliJ-platform plugin that shows the **overviews** the
 [gigagit](https://gigagit.code-drill.eu/) CLI (`gg`) stores for a repository:
@@ -6,7 +6,7 @@ an AI agent's markdown document whose links are anchors into the code at one
 commit, plus remarks on exact lines. Read from gg's own store on disk
 (`docs/gg-notes-store/SPEC.md`), with no gg running. Read-only.
 
-- **GgNotes tool window** (right stripe): the overviews of the open
+- **Overviews tool window** (right stripe): the overviews of the open
   repository grouped by commit, HEAD's first, then newest; rows read
   `title · author · date · short sha · branch | PR #n`.
 - **Document**: selecting a row renders it; anchors are links numbered in
@@ -33,7 +33,7 @@ commit, plus remarks on exact lines. Read from gg's own store on disk
 
 ```bash
 ./test.sh                 # unit + integration tests
-./dist.sh                 # build/distributions/gg-notes-<version>.zip
+./dist.sh                 # build/distributions/agent-notes-<version>.zip
 ./dist.sh /some/deploy/dir
 ```
 

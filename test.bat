@@ -1,5 +1,5 @@
 @echo off
-rem Run the full GgNotes test suite (unit + integration).
+rem Run the full AgentNotes test suite (unit + integration).
 rem Extra args pass through to Gradle, e.g.: test.bat --tests "dev.ggnotes.session.*"
 setlocal
 cd /d "%~dp0"

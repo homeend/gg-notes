@@ -22,7 +22,25 @@ class GgNotesBundleTest {
 
     @Test
     fun `startup message formats the project name`() {
-        assertEquals("GgNotes loaded for project demo", GgNotesBundle.message("startup.ready", "demo"))
+        assertEquals("AgentNotes loaded for project demo", GgNotesBundle.message("startup.ready", "demo"))
+    }
+
+    @Test
+    fun `the product is AgentNotes in every text the user sees`() {
+        assertEquals("AgentNotes", GgNotesBundle.message("plugin.name"))
+        assertEquals("AgentNotes", GgNotesBundle.message("group.GgNotes.Toolbar.text"))
+        assertEquals("AgentNotes", GgNotesBundle.message("notification.group.name"))
+        // keys keep their GgNotes spelling (action and tool window ids are frozen); no VALUE names the old product
+        val old = loadBundle().filterValues { "GgNotes" in it }
+        assertEquals("values still naming GgNotes: $old", emptyMap<String, String>(), old)
+    }
+
+    @Test
+    fun `the descriptor names AgentNotes and keeps the id`() {
+        val xml = javaClass.getResourceAsStream("/META-INF/plugin.xml")!!.readBytes().toString(Charsets.UTF_8)
+        assertTrue(xml.contains("<name>AgentNotes</name>"))
+        assertTrue("the id stays, so the new zip replaces the installed plugin", xml.contains("<id>dev.ggnotes</id>"))
+        assertTrue(Regex("""<notificationGroup id="GgNotes"[^>]*key="notification.group.name"""").containsMatchIn(xml))
     }
 
     @Test

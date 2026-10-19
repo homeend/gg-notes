@@ -1,5 +1,5 @@
 @echo off
-rem Build the distributable GgNotes plugin zip.
+rem Build the distributable AgentNotes plugin zip.
 rem Needs a JDK 17-23 (NOT 25) — set JAVA_HOME below or in the environment.
 setlocal
 

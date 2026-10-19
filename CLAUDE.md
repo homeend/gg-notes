@@ -6,9 +6,14 @@ acceptance scenario. This file is the build/platform side.
 
 IntelliJ-platform plugin scaffolded from `~/git-focus` (same Gradle/Kotlin
 setup, same scripts). Purpose: surface `gg note` review notes from the
-gigagit CLI (`/work/gigagit`) inside the IDE. Plugin id `dev.ggnotes` and
-name `GgNotes` are still changeable; they freeze on the first Marketplace
-upload.
+gigagit CLI (`/work/gigagit`) inside the IDE. The product is **AgentNotes**
+(renamed from GgNotes on 2026-10-19; the zip is `agent-notes-<version>.zip`,
+Gradle `rootProject.name = "agent-notes"`). The repo, the `dev.ggnotes`
+packages, the bundle keys, the action ids `GgNotes.*`, the tool window id
+`GgNotes` and the notification group id `GgNotes` keep the old spelling on
+purpose: they are frozen ids (keymaps, saved layouts). The plugin id
+`dev.ggnotes` is kept so a new zip replaces the installed plugin; id and
+name freeze on the first Marketplace upload.
 
 ## Build & test
 
