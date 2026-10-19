@@ -87,7 +87,7 @@
       }
     },
     {
-      "name": "note on nothing",
+      "name": "note on nothing (retired verb: gg-notes copy, session-docs spec §6.3)",
       "sync": true,
       "command": {
         "id": "c-8",
@@ -97,7 +97,7 @@
       },
       "reply": {
         "ok": false,
-        "error": "no note t9"
+        "error": "note_show is retired: write the file (gg session note add)"
       }
     },
     {

@@ -23,6 +23,26 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.3.0</h3>
+        <ul>
+            <li>An agent's temporary overviews and notes are now FILES in the worktree's session
+                docs directory (gg's session-docs contract: <code>&lt;inbox&gt;/docs/&lt;id&gt;.md</code>
+                and <code>&lt;id&gt;.toml</code>), shown by every gg reader of the worktree. The
+                tool window's <b>Session</b> group lists the overview files newest first (title,
+                author, age, anchor count, on screen); note files are boxes on the editors of
+                their file, placed from their own lines and following edits. The directory is
+                re-read every 2 s and on every change; a replaced file is replaced in place, a
+                removed one goes. Nothing is created or deleted by the IDE on its own.</li>
+            <li><b>Delete</b> on a session row unlinks the overview's file; the editor's menu
+                gets <b>Delete Session Note</b> and <b>Delete All Session Notes on This File</b>.
+                Closing stays local: the file and the row stay.</li>
+            <li>The in-memory <code>note_*</code> / <code>overview_*</code> steer verbs are
+                retired: a gg that still sends them is told
+                <code>&lt;verb&gt; is retired: write the file (gg session note|overview add)</code>
+                and the IDE raises a notice. <code>gg session files</code> lists the session
+                overviews under their document ids; <code>file_focus</code> takes one.</li>
+        </ul>
+
         <h3>0.2.11</h3>
         <ul>
             <li>Rows say what they refer to: a short grey badge after an overview or review title
@@ -113,7 +133,8 @@
                 same gg store.</li>
             <li>The IDE is a <code>gg session … --to ide</code> target: an agent in a terminal can
                 open a file at a line or range, highlight lines, leave temporary remarks and show
-                an in-memory overview in the tool window, with no gg running.</li>
+                an in-memory overview in the tool window, with no gg running (the in-memory part
+                was replaced by session docs files in 0.3.0).</li>
         </ul>
 
         <h3>0.1.0</h3>
@@ -152,6 +173,13 @@
         </action>
         <action id="GgNotes.Close" class="dev.ggnotes.overview.CloseOverviewAction"/>
         <action id="GgNotes.DocumentOnly" class="dev.ggnotes.overview.DocumentOnlyAction"/>
+        <!-- the editor's menu on a file that carries session notes (session-docs SPEC §4.4: Delete is a row/marker action) -->
+        <action id="GgNotes.DeleteSessionNote" class="dev.ggnotes.steer.DeleteSessionNoteAction">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+        <action id="GgNotes.DeleteSessionNotesOnFile" class="dev.ggnotes.steer.DeleteSessionNotesOnFileAction">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
         <group id="GgNotes.Toolbar">
             <reference ref="GgNotes.Refresh"/>
             <separator/>

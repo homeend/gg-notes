@@ -68,32 +68,6 @@ data class OpenFileWire(
     val notes: Int = 0,
 )
 
-/** SPEC §5 temporary note. */
-data class NoteWire(
-    val id: String,
-    @SerializedName("file_id") val fileId: String,
-    val path: String,
-    val start: Int,
-    val end: Int,
-    val summary: String,
-    val rationale: String? = null,
-    val author: String? = null,
-    val outdated: Boolean = false,
-    val text: List<String>? = null,
-    val meta: Map<String, String>? = null,
-    val display: JsonElement? = null,
-)
-
-/** SPEC §5 overview entry. */
-data class OverviewWire(
-    val id: String,
-    val title: String,
-    val state: String,
-    val anchors: Int,
-    val unresolved: List<String>? = null,
-    val text: String? = null,
-)
-
 /** SPEC §3.2. */
 data class Reply(
     val id: String,
@@ -101,8 +75,6 @@ data class Reply(
     val detail: String? = null,
     val error: String? = null,
     val files: List<OpenFileWire>? = null,
-    val notes: List<NoteWire>? = null,
-    val overviews: List<OverviewWire>? = null,
 ) {
     companion object {
         fun ok(id: String, detail: String) = Reply(id, true, detail = detail.ifEmpty { null })
@@ -175,29 +147,6 @@ object Wire {
                     if (f.line != 0) addProperty("line", f.line)
                     addProperty("state", f.state)
                     if (f.notes != 0) addProperty("notes", f.notes)
-                }
-            }))
-        }
-        reply.notes?.takeIf { it.isNotEmpty() }?.let { notes ->
-            o.add("notes", gson.toJsonTree(notes.map { n ->
-                JsonObject().apply {
-                    addProperty("id", n.id); addProperty("file_id", n.fileId); addProperty("path", n.path)
-                    addProperty("start", n.start); addProperty("end", n.end); addProperty("summary", n.summary)
-                    n.rationale?.takeIf { it.isNotEmpty() }?.let { addProperty("rationale", it) }
-                    n.author?.takeIf { it.isNotEmpty() }?.let { addProperty("author", it) }
-                    if (n.outdated) addProperty("outdated", true)
-                    n.text?.let { add("text", gson.toJsonTree(it)) }
-                    n.meta?.takeIf { it.isNotEmpty() }?.let { add("meta", gson.toJsonTree(it)) }
-                    n.display?.let { add("display", it) }
-                }
-            }))
-        }
-        reply.overviews?.takeIf { it.isNotEmpty() }?.let { overviews ->
-            o.add("overviews", gson.toJsonTree(overviews.map { v ->
-                JsonObject().apply {
-                    addProperty("id", v.id); addProperty("title", v.title); addProperty("state", v.state); addProperty("anchors", v.anchors)
-                    v.unresolved?.takeIf { it.isNotEmpty() }?.let { add("unresolved", gson.toJsonTree(it)) }
-                    v.text?.let { addProperty("text", it) }
                 }
             }))
         }

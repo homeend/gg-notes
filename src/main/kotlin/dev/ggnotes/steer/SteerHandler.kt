@@ -19,16 +19,11 @@ import com.intellij.vcs.log.impl.VcsLogNavigationUtil.jumpToHash
 import dev.ggnotes.git.GitAccess
 import dev.ggnotes.overview.OverviewService
 import dev.ggnotes.overview.RevisionFiles
-import dev.ggnotes.store.DocumentResult
-import dev.ggnotes.store.Overview
-import dev.ggnotes.store.OverviewDocument
 import dev.ggnotes.store.StoreLocator
 import java.awt.Color
 import java.awt.Graphics
 import java.awt.Rectangle
-import java.nio.file.Files
 import java.nio.file.Path
-import java.time.OffsetDateTime
 
 /**
  * PLUGIN.md §4: one `gg session` command → one reply. Runs on the steer
@@ -47,15 +42,8 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             "highlight_clear" -> highlightClear(s, c)
             "files" -> files(s, c)
             "file_focus" -> fileFocus(s, c)
-            "note_add" -> noteAdd(s, c)
-            "note_list" -> noteList(s, c)
-            "note_show" -> noteShow(s, c)
-            "note_rm" -> noteRm(s, c)
-            "overview_add" -> overviewAdd(s, c)
-            "overview_set" -> overviewSet(s, c)
-            "overview_list" -> overviewList(s, c)
-            "overview_show" -> overviewShow(s, c)
-            "overview_rm" -> overviewRm(s, c)
+            "note_add", "note_list", "note_show", "note_rm" -> retired(s, c, "note")
+            "overview_add", "overview_set", "overview_list", "overview_show", "overview_rm" -> retired(s, c, "overview")
             "focus", "reload", "serve" -> Reply.fail(c.id, "${c.cmd} is a gg TUI command")
             else -> Reply.fail(c.id, "unknown command \"${c.cmd}\"")
         }
@@ -293,35 +281,38 @@ class SteerHandler(private val project: Project, private val service: SteerServi
         return r
     }
 
-    /** EDT: the open-files list as the editors show it now. */
+    /**
+     * EDT: the open-files list as the editors show it now — the files the agent opened, then
+     * the worktree's session overviews under their document ids (session-docs SPEC §6.2).
+     */
     fun openFilesWire(s: SteerService.RootSession): List<OpenFileWire> {
         val fem = FileEditorManager.getInstance(project)
         val selected = fem.selectedFiles.firstOrNull()
-        val openOverview = OverviewService.getInstance(project).open?.overview
-        // shown per entry: an overview on the tool window and the file in the selected tab are both shown
-        val isShown: (SessionMemory.OpenFile) -> Boolean = { f ->
-            if (f.source == "overview") openOverview?.viewKind == "session:${f.id}:" else selected != null && s.files[f.id] == selected
-        }
-        return s.memory.openFiles().map { f ->
-            s.memory.wire(f, isShown,
+        val files = s.memory.openFiles().map { f ->
+            s.memory.wire(f, isShown = { selected != null && s.files[it.id] == selected },
                 caretLine = { entry ->
                     val vf = s.files[entry.id]
                     val editor = if (vf != null && vf == selected) fem.selectedTextEditor else null
                     editor?.caretModel?.logicalPosition?.line?.plus(1) ?: 0
                 },
-                noteCount = { entry -> s.memory.noteCount(entry.id) })
+                noteCount = { entry -> s.marks.noteCount(entry.path) })
         }
+        val overviews = s.docs.index.overviews().map { e ->
+            OpenFileWire(id = e.doc.id, path = e.doc.id + ".md", source = "overview", title = e.doc.title, rev = null, line = 0,
+                state = if (service.isShown(s, e.doc.id)) "shown" else "background", notes = 0)
+        }
+        return files + overviews.sortedByDescending { it.state == "shown" }
     }
 
     private fun fileFocus(s: SteerService.RootSession, c: Command): Reply {
         val name = c.fileId?.takeIf { it.isNotEmpty() } ?: c.file?.takeIf { it.isNotEmpty() } ?: return Reply.fail(c.id, "file_focus needs a file")
+        // a document id names a session overview: show it in the tool window
+        c.fileId?.takeIf { it.isNotEmpty() }?.let { id -> s.docs.index.overview(id) }?.let { e ->
+            service.showOverview(s, e, keepAnchor = true)
+            return Reply.ok(c.id, "focused ${e.doc.title}")
+        }
         val entry = (if (!c.fileId.isNullOrEmpty()) s.memory.findFile(c.fileId) else s.memory.findFileByPath(name))
             ?: return Reply.fail(c.id, "no open file $name")
-        if (entry.source == "overview") {
-            val o = s.memory.findOverview(entry.id) ?: return Reply.fail(c.id, "no open file $name")
-            show(s, o, keepAnchor = true)
-            return Reply.ok(c.id, "focused ${o.title}")
-        }
         val vf = s.files[entry.id] ?: return Reply.fail(c.id, "no open file $name")
         s.memory.touchFile(entry.source, entry.path, entry.rev)
         var detail = ""
@@ -329,65 +320,20 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             val no = c.line?.no ?: 0
             val editor = FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, vf, (no - 1).coerceAtLeast(0), 0), true)
             if (editor != null && no > 0) placeCaret(editor, no, c.line?.end ?: 0, Lines.split(editor.document.charsSequence).size)
-            detail = if (entry.source == "overview") "focused ${entry.title ?: entry.path}" else "focused ${entry.path}" + (if (no > 0) " at line $no" else "")
+            detail = "focused ${entry.path}" + (if (no > 0) " at line $no" else "")
         }
         return Reply.ok(c.id, detail)
     }
 
-    // ---- temporary notes ----------------------------------------------------------------
+    // ---- retired verbs (session-docs SPEC §6.3) -------------------------------------------
 
-    /** PLUGIN.md §5: resolve the file as navigate would, open it in the background, note the editor's CURRENT lines. */
-    private fun noteAdd(s: SteerService.RootSession, c: Command): Reply {
-        val file = c.file?.takeIf { it.isNotEmpty() } ?: return Reply.fail(c.id, "note_add needs a file")
-        val state = c.target?.state.orEmpty()
-        if (state == "preview" || state == "ref" || state == "pair") return Reply.fail(c.id, "the IDE cannot show a $state target")
-        if (c.side == "old") return Reply.fail(c.id, "the IDE shows no old side")
-        val resolved = resolveFile(s, c, file) ?: return Reply.fail(c.id, missingFile(c, file))
-        val entry = s.memory.touchFile(resolved.source, file, resolved.rev, background = true)
-        s.files[entry.id] = resolved.vf
-        var result: NoteResult? = null
-        onEdt {
-            val fem = FileEditorManager.getInstance(project)
-            if (!fem.isFileOpen(resolved.vf)) fem.openFile(resolved.vf, false)
-            val document = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(resolved.vf)
-            val lines = document?.let { s.notes.currentLines(it) } ?: emptyList()
-            result = s.memory.addNote(entry.id, lines, c.start, if (c.end >= c.start) c.end else c.start, c.summary, c.rationale, c.author, c.meta, c.display)
-            if (result is NoteResult.Ok) s.notes.noteAdded(entry.id, resolved.vf)
-        }
-        return when (val r = result) {
-            is NoteResult.Ok -> Reply.ok(c.id, s.memory.notedDetail(r.note)).copy(notes = listOf(s.memory.noteWire(r.note, withText = false)))
-            is NoteResult.Refused -> Reply.fail(c.id, r.error)
-            null -> Reply.fail(c.id, "no editor for $file")
-        }
+    /** The in-memory note and overview verbs are gone: a gg that still sends them is older than the files; the refusal names the fix. */
+    private fun retired(s: SteerService.RootSession, c: Command, kind: String): Reply {
+        service.noteRetiredVerb(s, c.cmd)
+        return Reply.fail(c.id, "${c.cmd} is retired: write the file (gg session $kind add)")
     }
 
-    private fun noteList(s: SteerService.RootSession, c: Command): Reply {
-        val scope: SessionMemory.OpenFile? = when {
-            !c.fileId.isNullOrEmpty() -> s.memory.findFile(c.fileId) ?: return Reply.fail(c.id, "no open file ${c.fileId}")
-            !c.file.isNullOrEmpty() -> s.memory.findFileByPath(c.file) ?: return Reply.fail(c.id, "no open file ${c.file}")
-            else -> null
-        }
-        for (f in listOfNotNull(scope).ifEmpty { s.memory.openFiles() }) s.notes.alignNow(f.id)
-        val notes = (if (scope != null) s.memory.notesOf(scope.id) else s.memory.allNotes()).map { s.memory.noteWire(it, withText = false) }
-        return Reply.ok(c.id, if (notes.isEmpty()) "no notes" else "").copy(notes = notes)
-    }
-
-    private fun noteShow(s: SteerService.RootSession, c: Command): Reply {
-        val id = c.noteId.orEmpty()
-        val n = s.memory.findNote(id) ?: return Reply.fail(c.id, "no note $id")
-        s.notes.alignNow(n.fileId)
-        return Reply.ok(c.id, "").copy(notes = listOf(s.memory.noteWire(s.memory.findNote(id) ?: n, withText = true)))
-    }
-
-    private fun noteRm(s: SteerService.RootSession, c: Command): Reply {
-        val id = c.noteId.orEmpty()
-        val n = s.memory.findNote(id) ?: return Reply.fail(c.id, "no note $id")
-        s.memory.removeNote(id)
-        onEdt { s.notes.redraw(n.fileId) }
-        return Reply.ok(c.id, "removed $id")
-    }
-
-    /** `navigate --step next_note|prev_note`: from the file in front, the next/previous temporary note by line. */
+    /** `navigate --step next_note|prev_note`: from the file in front, the next/previous session note by line. */
     private fun stepNote(s: SteerService.RootSession, c: Command): Reply {
         val forward = c.step != "prev_note"
         val none = if (forward) "no next note in this diff" else "no previous note in this diff"
@@ -396,91 +342,23 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             val fem = FileEditorManager.getInstance(project)
             val vf = fem.selectedFiles.firstOrNull()
             val editor = fem.selectedTextEditor
-            val entry = s.memory.openFiles().firstOrNull { s.files[it.id] == vf }
-            if (vf == null || editor == null || entry == null) {
+            val path = vf?.let { s.marks.relativePath(it) }
+            if (vf == null || editor == null || path == null) {
                 reply = Reply.fail(c.id, none)
                 return@onEdt
             }
-            s.notes.alignNow(entry.id)
+            s.marks.alignNow(path)
             val caret = editor.caretModel.logicalPosition.line + 1
-            val notes = s.memory.notesOf(entry.id)
+            val notes = s.marks.placementsOn(path).map { it.second }
             val target = if (forward) notes.filter { it.start > caret }.minByOrNull { it.start } else notes.filter { it.start < caret }.maxByOrNull { it.start }
             if (target == null) {
                 reply = Reply.fail(c.id, none)
                 return@onEdt
             }
             placeCaret(editor, target.start, target.end, Lines.split(editor.document.charsSequence).size)
-            reply = Reply.ok(c.id, "opened ${entry.path}:${target.start}")
+            reply = Reply.ok(c.id, "opened $path:${target.start}")
         }
         return reply ?: Reply.fail(c.id, none)
-    }
-
-    // ---- overviews ----------------------------------------------------------------------
-
-    /** A file anchor resolves when the path is in the worktree and its end line is within the file. */
-    private fun resolver(s: SteerService.RootSession) = SessionAnchors.Resolver { path, end ->
-        val f = Path.of(s.repo.root.path, path)
-        if (!Files.isRegularFile(f)) return@Resolver false
-        if (end == null) return@Resolver true
-        val bytes = runCatching { Files.readAllBytes(f) }.getOrNull() ?: return@Resolver false
-        end <= Lines.split(String(bytes, Charsets.UTF_8)).size
-    }
-
-    // the viewer form, the shown test and showing live in SteerService: the tool window's rows use them too
-    private fun isShown(s: SteerService.RootSession, o: SessionMemory.Overview): Boolean = service.isShown(s, o)
-
-    private fun show(s: SteerService.RootSession, o: SessionMemory.Overview, keepAnchor: Boolean) = service.showOverview(s, o, keepAnchor)
-
-    private fun overviewAdd(s: SteerService.RootSession, c: Command): Reply {
-        val o = when (val r = s.memory.addOverview(c.title, c.text, resolver(s))) {
-            is OverviewResult.Refused -> return Reply.fail(c.id, r.error)
-            is OverviewResult.Ok -> r.overview
-        }
-        if (c.background) {
-            service.sessionChanged()
-            return Reply.ok(c.id, "added ${o.id} in the background").withUnresolved(o)
-        }
-        show(s, o, keepAnchor = false)
-        return Reply.ok(c.id, "showing ${o.id}").withUnresolved(o)
-    }
-
-    private fun Reply.withUnresolved(o: SessionMemory.Overview): Reply =
-        if (o.unresolved.isEmpty()) this else copy(detail = (detail ?: "") + o.unresolved.joinToString("") { "\nunresolved: $it" })
-
-    private fun overviewSet(s: SteerService.RootSession, c: Command): Reply {
-        val id = c.fileId?.takeIf { it.isNotEmpty() } ?: return Reply.fail(c.id, "no overview ")
-        val o = when (val r = s.memory.setOverview(id, c.title, c.text, resolver(s))) {
-            is OverviewResult.Refused -> return Reply.fail(c.id, r.error)
-            is OverviewResult.Ok -> r.overview
-        }
-        return if (isShown(s, o)) {
-            show(s, o, keepAnchor = true)
-            Reply.ok(c.id, "showing ${o.id}").withUnresolved(o)
-        } else {
-            service.sessionChanged()
-            Reply.ok(c.id, o.id).withUnresolved(o)
-        }
-    }
-
-    private fun overviewList(s: SteerService.RootSession, c: Command): Reply {
-        val resolver = resolver(s)
-        val wire = s.memory.overviews().map { o ->
-            s.memory.refreshUnresolved(o, resolver)
-            s.memory.overviewWire(o, shown = isShown(s, o), withText = false)
-        }
-        return Reply.ok(c.id, "${wire.size} overviews").copy(overviews = wire)
-    }
-
-    private fun overviewShow(s: SteerService.RootSession, c: Command): Reply {
-        val id = c.fileId.orEmpty()
-        val o = s.memory.findOverview(id) ?: return Reply.fail(c.id, "no overview $id")
-        return Reply.ok(c.id, o.id).copy(overviews = listOf(s.memory.overviewWire(o, shown = isShown(s, o), withText = true)))
-    }
-
-    private fun overviewRm(s: SteerService.RootSession, c: Command): Reply {
-        val id = c.fileId.orEmpty()
-        if (!service.removeOverview(s, id)) return Reply.fail(c.id, "no overview $id")
-        return Reply.ok(c.id, "closed $id")
     }
 
     // ---- helpers -------------------------------------------------------------------------

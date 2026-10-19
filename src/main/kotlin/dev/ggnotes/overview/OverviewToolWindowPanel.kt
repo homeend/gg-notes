@@ -66,7 +66,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     private class FileNode(val file: FileEntry, val commit: String, val worktree: String?, val repo: GitRepository)
     private class ThreadNode(val thread: NoteThread, val commit: String, val worktree: String?, val repo: GitRepository)
     private class ReplyNode(val reply: NoteRecord)
-    /** "This session": the in-memory overviews an agent added over the steer inbox (gone with the project). */
+    /** "Session": the overview files of the worktree's session docs directory (session-docs SPEC §4.4). */
     private class SessionGroupNode(val repo: GitRepository)
     /** [identity] is the viewer form's identity, so "on screen" is judged at paint time against the open document. */
     private class SessionOverviewNode(val row: dev.ggnotes.steer.SteerService.SessionRow, val repo: GitRepository, val identity: String)
@@ -102,7 +102,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
                 is ReplyNode -> (node.parent as? DefaultMutableTreeNode)?.userObject.let { p ->
                     if (p is ThreadNode) service.openNotes(listOf(p.thread), p.thread.root.address.path, p.commit, p.worktree, p.repo)
                 }
-                is SessionOverviewNode -> steer.showOverview(u.row.session, u.row.overview, keepAnchor = false)
+                is SessionOverviewNode -> steer.showOverview(u.row.session, u.row.entry, keepAnchor = false)
                 else -> Unit
             }
         }
@@ -162,12 +162,12 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         val multi = snapshot.repos.size > 1
         for (repo in snapshot.repos) {
             val parent = if (multi) DefaultMutableTreeNode(RepoNode(repo.repo)).also { root.add(it) } else root
-            // in-memory overviews first: they are what the agent is showing right now, and they outlive nothing
+            // session documents first: they are what an agent is showing on this worktree right now
             val sessionRows = steer.sessionOverviews(repo.repo.root)
             if (sessionRows.isNotEmpty()) {
                 val sn = DefaultMutableTreeNode(SessionGroupNode(repo.repo))
                 parent.add(sn)
-                for (row in sessionRows) sn.add(DefaultMutableTreeNode(SessionOverviewNode(row, repo.repo, steer.viewerOverview(row.session, row.overview).identity)))
+                for (row in sessionRows) sn.add(DefaultMutableTreeNode(SessionOverviewNode(row, repo.repo, steer.sessionIdentity(row.session, row.entry.doc))))
             }
             repo.error?.let { messages += it }
             repo.contents.problems.forEach { messages += "${repo.repo.root.name}: $it" }
@@ -248,20 +248,20 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
             val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
             val session = node?.userObject is SessionOverviewNode
             e.presentation.isEnabledAndVisible = node != null && (session || planFor(node)?.first?.lines?.isNotEmpty() == true)
-            // an in-memory row promises no store deletion, and the label says so
+            // a session row's Delete unlinks a file, not store records, and the label says so
             e.presentation.text = GgNotesBundle.message(if (session) "action.GgNotes.RemoveFromSession.text" else "action.GgNotes.RemoveFromStore.text")
         }
 
         override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) {
             val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return
             (node.userObject as? SessionOverviewNode)?.let { u ->
-                // an in-memory overview: nothing is in gg's store, the drop is the session's own (`overview_rm`)
+                // a session overview: its file is unlinked (session-docs SPEC §4.4); every gg reader of the worktree loses it
                 val answer = com.intellij.openapi.ui.Messages.showYesNoDialog(
-                    project, GgNotesBundle.message("remove.confirm.SESSION", u.row.overview.title, u.row.overview.id),
+                    project, GgNotesBundle.message("remove.confirm.SESSION", u.row.entry.doc.title, u.row.entry.doc.id),
                     GgNotesBundle.message("remove.confirm.title"),
                     GgNotesBundle.message("action.GgNotes.RemoveFromSession.text"), com.intellij.openapi.ui.Messages.getCancelButton(),
-                    com.intellij.openapi.ui.Messages.getQuestionIcon())
-                if (answer == com.intellij.openapi.ui.Messages.YES) steer.removeOverview(u.row.session, u.row.overview.id)
+                    com.intellij.openapi.ui.Messages.getWarningIcon())
+                if (answer == com.intellij.openapi.ui.Messages.YES) steer.deleteOverview(u.row.session, u.row.entry.doc.id)
                 return
             }
             val (plan, repo) = planFor(node) ?: return
@@ -370,18 +370,20 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
             when (val u = (value as? DefaultMutableTreeNode)?.userObject) {
                 is RepoNode -> append(u.repo.root.name, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 is SessionGroupNode -> {
-                    // the header is the whole badge ("In memory"); the rows under it carry none
+                    // the header is the whole badge ("Session"); the rows under it carry none
                     append(GgNotesBundle.message("toolwindow.session"), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                     toolTipText = GgNotesBundle.message("toolwindow.session.tooltip")
                 }
                 is SessionOverviewNode -> {
-                    val o = u.row.overview
+                    // SPEC §4.4: title, author, age, anchor count, whether it is on screen
+                    val o = u.row.entry.doc
                     append(o.title.ifBlank { "(untitled)" }, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                    append("  " + listOf(o.id, GgNotesBundle.message("document.anchors", o.anchors.size)).joinToString(" · "), SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    val age = com.intellij.util.text.DateFormatUtil.formatPrettyDateTime(u.row.entry.time)
+                    append("  " + listOf(o.author, age, GgNotesBundle.message("document.anchors", o.anchors.size)).joinToString(" · "), SimpleTextAttributes.GRAYED_ATTRIBUTES)
                     // judged now, not at build time: Close or another row's click changes it without a rebuild
                     if (service.open?.overview?.identity == u.identity) append("  " + GgNotesBundle.message("toolwindow.shown"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
-                    if (o.unresolved.isNotEmpty()) append("  ⚠ " + GgNotesBundle.message("toolwindow.unresolved", o.unresolved.size), SimpleTextAttributes.ERROR_ATTRIBUTES)
-                    toolTipText = GgNotesBundle.message("toolwindow.session.tooltip")
+                    if (u.row.unresolved.isNotEmpty()) append("  ⚠ " + GgNotesBundle.message("toolwindow.unresolved", u.row.unresolved.size), SimpleTextAttributes.ERROR_ATTRIBUTES)
+                    toolTipText = u.row.session.docs.fileOf(dev.ggnotes.session.DocName(o.id, dev.ggnotes.session.DocKind.OVERVIEW)).toString()
                 }
                 is GroupNode -> {
                     // a commit that only carries one pull request's records is that PR's group

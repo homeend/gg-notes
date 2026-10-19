@@ -1,6 +1,6 @@
 package dev.ggnotes.steer
 
-/** An overview anchor: a file (with optional lines) or a temporary note `note:t<n>` (gg's `agentdocs.Anchor`). */
+/** An overview anchor: a file (with optional lines) or a session note `note:<id>` (gg's `agentdocs.Anchor`). */
 data class SessionAnchor(val path: String?, val start: Int?, val end: Int?, val note: String?) {
     val dest: String get() = when {
         note != null -> "note:$note"
@@ -23,12 +23,12 @@ object SessionAnchors {
     // character classes only (a repeated alternation recurses per character in java.util.regex)
     private val INLINE_LINK = Regex("""!?\[([^\[\]]{0,2000})\]\(([^)\s]{1,2000})(\s+"[^"]*")?\)""")
 
-    /** `note:t<n>`, or a repo-relative slash path with an optional `:N` / `:N-M`; null for anything else. */
+    /** `note:<id>` (a session-docs id), or a repo-relative slash path with an optional `:N` / `:N-M`; null for anything else. */
     fun parse(dest: String): SessionAnchor? {
         var d = dest.trim()
         if (d.startsWith("note:")) {
             val id = d.substring(5)
-            return if (id.length > 1 && id[0] == 't' && id.substring(1).all { it in '0'..'9' }) SessionAnchor(null, null, null, id) else null
+            return if (dev.ggnotes.session.SessionDocNames.isValidId(id)) SessionAnchor(null, null, null, id) else null
         }
         if (d.startsWith("./")) d = d.substring(2)
         if (d.isEmpty() || d.startsWith("/") || '\\' in d || "://" in d) return null
@@ -76,7 +76,7 @@ object SessionAnchors {
     }
 
     /**
-     * The markdown the viewer gets: a `note:t<n>` link becomes a link to the
+     * The markdown the viewer gets: a `note:<id>` link becomes a link to the
      * note's lines now ([noteSpan]), an unresolved anchor becomes `label (dest)` text.
      */
     fun rewrite(markdown: String, unresolved: Set<String>, noteSpan: (String) -> String?): String {

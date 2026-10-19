@@ -58,23 +58,32 @@ upload.
   `overview store` verb and its 12 Windows stores are gg's own test repos.
 - Steering (`docs/gg-steer/`): `dev.ggnotes.steer` is the `gg session …
   --to ide` target. Pure and unit-tested: `SteerPaths` (gg's EncodeRepoKey
-  inbox path), `Wire` (command/reply JSON), `Inbox` + `Presence` (drain
-  rules, replies, sweep, ide.json), `Lines` (gg's line rule and landed
-  prose), `Reanchor` (gg's agentdocs rule over a Myers line diff),
-  `SessionMemory` (open files f<n>, notes t<n>, overviews) and
-  `SessionAnchors` (the grammar plus `note:t<n>`). IDE: `SteerService`
-  (presence per git root from the startup activity, 1 s touch, 500 ms
-  drain + watcher, one worker thread, replies only on `wait`),
-  `SteerHandler` (verb by verb, PLUGIN.md §4), `TempNotes` (boxes via
-  `RemarkOverlay.box`, debounced re-anchoring). A session overview opens
-  through `OverviewService` with `viewKind = session:f<n>:` and
-  `liveWorktree`; `openKeepingAnchor` is `overview_set`'s in-place path.
-  The viewer form, the shown test, show and remove live on `SteerService`
-  (`viewerOverview`, `isShown`, `showOverview`, `removeOverview`) because
-  the tool window uses them too: `sessionOverviews(root)` feeds its "This
-  session · in memory" group and `addSessionListener` triggers its rebuild
-  (`sessionChanged()` after every add/set/show/rm). Nothing of this is
-  persisted or on the wire: the rows go with the project.
+  inbox path, plus `docs/`), `Wire` (command/reply JSON), `Inbox` +
+  `Presence` (drain rules, replies, sweep, ide.json), `Lines` (gg's line
+  rule and landed prose), `Reanchor` (gg's agentdocs rule over a Myers line
+  diff), `SessionMemory` (open files f<n> only) and `SessionAnchors` (the
+  grammar plus `note:<id>`). IDE: `SteerService` (presence per git root
+  from the startup activity, 1 s touch, 500 ms drain + watcher, one worker
+  thread, replies only on `wait`), `SteerHandler` (verb by verb, PLUGIN.md
+  §4; the `note_*`/`overview_*` verbs are retired and refused with the
+  session-docs prose).
+- Session docs (`docs/gg-session-docs/`, the pure layer in
+  `dev.ggnotes.session`): an agent's temporary overviews and notes are files
+  in `<inbox>/docs/` (`<id>.md`, `<id>.toml`). `SessionDocNames` (ids, the
+  ignore rules), `SessionDocParser` (both shapes, gg's refusal prose),
+  `ColdAnchor` (first placement from the note's own lines), `DocDirectory`
+  + `DocIndex` (listing; reconcile by id on a (size, mtime) stamp), all
+  table-tested against gg's conformance files. IDE: `SteerService` reloads
+  every root's `DocFolder` every 2 s and on a watcher wake (the inbox is
+  watched so a `docs/` a writer creates is seen); `sessionOverviews(root)`
+  feeds the tool window's "Session" group, `viewerOverview` opens a file as
+  a live document (`viewKind = session:<top>\0<id>:`), a replaced open
+  overview is re-rendered on the same anchor, a removed one closes;
+  `SessionNoteMarks` draws note boxes on every editor of a noted file (cold
+  placement, then the debounced re-anchor; a replaced note keeps its place
+  when only its text changed). Deletes (`deleteOverview`, `deleteNote`,
+  `deleteNotesOn`) unlink files and let the reconcile do the rest; the
+  reader never creates the directory or writes a document.
 - `SteerService.start()` is a no-op in unit-test mode: tests publish
   presence only via `startSync()` under a temp `XDG_STATE_HOME` set BEFORE
   `super.setUp()`, so the suite never writes into the live state dir.

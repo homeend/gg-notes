@@ -165,9 +165,9 @@ Not in the store (SPEC-part2 §7): GitHub comments — a PR comment view needs
 `docs/gg-steer/SPEC.md` is the protocol (a copy of gigagit's spec);
 `docs/gg-steer/PLUGIN.md` is what the plugin implements, in build order:
 presence (`ide.json`, touched every 1 s), the `ide/` sub-inbox drain, the
-verb handler with gg's exact reply prose, and the session memory (open
-files `f<n>`, temporary notes `t<n>` with gg's exact-line re-anchoring,
-in-memory overviews). A bare `gg session <verb>` reaches the IDE when it is
+verb handler with gg's exact reply prose, the open-files list (`f<n>`) and
+the session docs reader (§8: overview and note files of the worktree, notes
+re-anchored on edits with gg's exact-line rule). A bare `gg session <verb>` reaches the IDE when it is
 the only live side (gigagit main 69c01a9a, 2026-10-18; before that, only
 `--to ide` or `GG_SESSION_TO=ide` did); while a gg TUI or web page is live
 they keep the verb and `--to ide` picks the IDE. gg's side is independent
@@ -186,3 +186,21 @@ included), `reanchor-cases.json` (the eight re-anchoring cases),
   code; the acceptance scenario of §3.2 is the manual gate.
 - Report any place where the real store differs from the spec — that is a
   spec bug to feed back to gigagit, not something to work around silently.
+
+## 8. Session docs — the current contract
+
+What an agent shows during work is FILES, with no gg process in the path:
+`<steer inbox>/docs/<id>.md` (an overview: `+++` TOML front matter, then
+markdown whose links are anchors) and `<id>.toml` (a note on working-tree
+lines, carrying the lines it was written on). Every gg reader of the
+worktree — the TUI, gg web, this plugin — lists the directory and shows what
+is there; the in-memory `overview_*`/`note_*` steer verbs are retired (the
+plugin answers them with the spec's refusal). The contract is
+`docs/gg-session-docs/SPEC.md` (gg main v0.4.2-39 ships it); the reader is
+built against `docs/gg-session-docs/examples/`, `cold-anchor-cases.json`
+and `id-vectors.json`, which the unit tests run. `docs/gg-steer/PLUGIN.md`
+§5 says what the plugin does with the directory; `dev.ggnotes.session` is
+the pure layer (names, parser, cold anchoring, listing, reconcile) and
+`SteerService` / `SessionNoteMarks` the IDE side. The plugin never writes a
+document and never creates the directory; its only writes are the user's
+deletes (a row's Delete, the editor's Delete Session Note items).
