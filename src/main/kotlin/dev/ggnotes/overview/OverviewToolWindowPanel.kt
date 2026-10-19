@@ -24,6 +24,7 @@ import dev.ggnotes.store.OverviewGrouping
 import dev.ggnotes.store.Review
 import dev.ggnotes.store.ReviewContent
 import dev.ggnotes.store.Reviews
+import dev.ggnotes.store.RowBadge
 import dev.ggnotes.store.WorkingEntry
 import git4idea.repo.GitRepository
 import java.awt.BorderLayout
@@ -59,8 +60,9 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     private class RepoNode(val repo: GitRepository)
     private class GroupNode(val entry: CommitEntry, val repo: GitRepository)
     private class WorkingNode(val entry: WorkingEntry, val repo: GitRepository)
-    private class OverviewNode(val overview: Overview, val repo: GitRepository, val replies: List<NoteRecord>)
-    private class ReviewNode(val review: Review, val repo: GitRepository, val treeChanged: List<String> = emptyList())
+    /** [tips]: the repository's branch tips at refresh time, for the `branch x` / `was x` badge. */
+    private class OverviewNode(val overview: Overview, val repo: GitRepository, val replies: List<NoteRecord>, val tips: Map<String, String?>)
+    private class ReviewNode(val review: Review, val repo: GitRepository, val treeChanged: List<String> = emptyList(), val tips: Map<String, String?> = emptyMap())
     private class FileNode(val file: FileEntry, val commit: String, val worktree: String?, val repo: GitRepository)
     private class ThreadNode(val thread: NoteThread, val commit: String, val worktree: String?, val repo: GitRepository)
     private class ReplyNode(val reply: NoteRecord)
@@ -174,9 +176,9 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
                 if (entry.isEmpty) continue
                 val gn = DefaultMutableTreeNode(GroupNode(entry, repo.repo))
                 parent.add(gn)
-                for (o in entry.overviews) gn.add(DefaultMutableTreeNode(OverviewNode(o, repo.repo, entry.overviewReplies[o.id].orEmpty())))
+                for (o in entry.overviews) gn.add(DefaultMutableTreeNode(OverviewNode(o, repo.repo, entry.overviewReplies[o.id].orEmpty(), repo.branchTips)))
                 for (r in entry.reviews) {
-                    val rn = DefaultMutableTreeNode(ReviewNode(r, repo.repo))
+                    val rn = DefaultMutableTreeNode(ReviewNode(r, repo.repo, tips = repo.branchTips))
                     gn.add(rn)
                     for (t in r.scopedThreads) {
                         val tn = DefaultMutableTreeNode(ThreadNode(t, entry.commit, null, repo.repo))
@@ -189,7 +191,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
             for (w in repo.model.working) {
                 val wn = DefaultMutableTreeNode(WorkingNode(w, repo.repo))
                 parent.add(wn)
-                for (r in w.reviews) wn.add(DefaultMutableTreeNode(ReviewNode(r, repo.repo, repo.treeChanged[r.id].orEmpty())))
+                for (r in w.reviews) wn.add(DefaultMutableTreeNode(ReviewNode(r, repo.repo, repo.treeChanged[r.id].orEmpty(), repo.branchTips)))
                 for (f in w.files) wn.add(fileNode(f, "", w.worktree, repo.repo))
             }
         }
@@ -368,22 +370,23 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
             when (val u = (value as? DefaultMutableTreeNode)?.userObject) {
                 is RepoNode -> append(u.repo.root.name, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 is SessionGroupNode -> {
+                    // the header is the whole badge ("In memory"); the rows under it carry none
                     append(GgNotesBundle.message("toolwindow.session"), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
-                    append("  " + GgNotesBundle.message("toolwindow.inMemory"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
                     toolTipText = GgNotesBundle.message("toolwindow.session.tooltip")
                 }
                 is SessionOverviewNode -> {
                     val o = u.row.overview
                     append(o.title.ifBlank { "(untitled)" }, SimpleTextAttributes.REGULAR_ATTRIBUTES)
                     append("  " + listOf(o.id, GgNotesBundle.message("document.anchors", o.anchors.size)).joinToString(" · "), SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                    append("  " + GgNotesBundle.message("toolwindow.inMemory"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
                     // judged now, not at build time: Close or another row's click changes it without a rebuild
                     if (service.open?.overview?.identity == u.identity) append("  " + GgNotesBundle.message("toolwindow.shown"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
                     if (o.unresolved.isNotEmpty()) append("  ⚠ " + GgNotesBundle.message("toolwindow.unresolved", o.unresolved.size), SimpleTextAttributes.ERROR_ATTRIBUTES)
                     toolTipText = GgNotesBundle.message("toolwindow.session.tooltip")
                 }
                 is GroupNode -> {
-                    append(u.entry.shortSha, SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
+                    // a commit that only carries one pull request's records is that PR's group
+                    val pr = prOf(u.entry)
+                    append(if (pr != null) GgNotesBundle.message("toolwindow.badge.pr", pr) else u.entry.shortSha, SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
                     append("  ")
                     append(u.entry.subject ?: GgNotesBundle.message("toolwindow.unknownCommit"),
                         if (u.entry.subject != null) SimpleTextAttributes.REGULAR_ATTRIBUTES else SimpleTextAttributes.ERROR_ATTRIBUTES)
@@ -397,7 +400,8 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
                 is OverviewNode -> {
                     val o = u.overview
                     append(o.title.ifBlank { "(untitled)" }, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                    append("  " + tail(o.author, o.updated, o.shortSha, o.prNumber, o.branch), SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    append("  " + tail(o.author, o.updated), SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    badge(RowBadge.of(o, u.tips[o.branch]))
                     if (u.replies.isNotEmpty()) append("  " + GgNotesBundle.message("toolwindow.replies", u.replies.size), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
                     if (o.document is DocumentResult.CannotRender) append("  " + GgNotesBundle.message("toolwindow.cannotRender"), SimpleTextAttributes.ERROR_ATTRIBUTES)
                     toolTipText = OverviewGrouping.rowText(o)
@@ -405,7 +409,8 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
                 is ReviewNode -> {
                     val r = u.review.record
                     append(u.review.title.ifBlank { "Review" }, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                    append("  " + tail(r.author, r.updated ?: r.created, r.shortSha, r.prNumber, r.address.branch), SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    append("  " + tail(r.author, r.updated ?: r.created), SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    badge(RowBadge.ofReview(u.review, u.tips[r.address.branch]))
                     val counts = u.review.counts()
                     if (counts.isNotEmpty()) append("  " + Reviews.countsText(counts), SimpleTextAttributes.REGULAR_ITALIC_ATTRIBUTES)
                     when (u.review.content) {
@@ -442,16 +447,35 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
             }
         }
 
-        private fun tail(author: String, date: java.time.OffsetDateTime?, sha: String, pr: Int?, branch: String): String {
+        /** Author and date only: the commit is the group header, and what else the row refers to is its badge. */
+        private fun tail(author: String, date: java.time.OffsetDateTime?): String {
             val parts = ArrayList<String>()
             if (author.isNotBlank()) parts += author
             date?.let { parts += this.date.format(it.toLocalDate()) }
-            if (sha.isNotBlank()) parts += sha
-            when {
-                pr != null -> parts += "PR #$pr"
-                branch.isNotBlank() -> parts += branch
-            }
             return parts.joinToString(" · ")
+        }
+
+        /** The short grey badge after a title; nothing for a plain commit row. */
+        private fun badge(b: RowBadge?) {
+            val text = when (b) {
+                null -> return
+                is RowBadge.Pr -> GgNotesBundle.message("toolwindow.badge.pr", b.number)
+                is RowBadge.Branch -> GgNotesBundle.message("toolwindow.badge.branch", b.name)
+                is RowBadge.WasTip -> GgNotesBundle.message("toolwindow.badge.wasTip", b.name)
+                RowBadge.Range -> GgNotesBundle.message("toolwindow.badge.range")
+                RowBadge.Preview -> GgNotesBundle.message("toolwindow.badge.preview")
+                RowBadge.Pair -> GgNotesBundle.message("toolwindow.badge.pair")
+                RowBadge.Working -> GgNotesBundle.message("toolwindow.badge.working")
+            }
+            append("  $text", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+        }
+
+        /** The pull request number when every record under the commit belongs to that one PR, else null. */
+        private fun prOf(entry: CommitEntry): Int? {
+            if (entry.files.isNotEmpty()) return null
+            val numbers = entry.overviews.map { it.prNumber } + entry.reviews.map { it.record.prNumber }
+            if (numbers.isEmpty() || numbers.any { it == null }) return null
+            return numbers.distinct().singleOrNull()
         }
     }
 }

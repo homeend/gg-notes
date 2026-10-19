@@ -23,6 +23,16 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.2.11</h3>
+        <ul>
+            <li>Rows say what they refer to: a short grey badge after an overview or review title
+                reads <i>PR #7</i>, <i>branch main</i> (still at that commit) or <i>was main</i>
+                (the branch moved on), <i>range</i>, <i>preview</i>, <i>pair</i> or <i>working</i>;
+                a plain commit row has none. Group headers are short: the commit, <b>PR #n</b>
+                when a commit carries one pull request's records, <b>Working tree</b>, and
+                <b>In memory</b> for an agent's session overviews.</li>
+        </ul>
+
         <h3>0.2.10</h3>
         <ul>
             <li>Close leaves the window ready for the next click: no row stays selected, so the
