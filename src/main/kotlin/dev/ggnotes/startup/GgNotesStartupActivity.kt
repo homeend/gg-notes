@@ -32,8 +32,20 @@ class GgNotesStartupActivity : ProjectActivity {
      */
     private fun demo(project: Project, service: OverviewService) {
         val done = AtomicBoolean(false)
-        // ggnotes.demo.kind = overview (default) | review | notes: which row kind to open
+        // ggnotes.demo.kind = overview (default) | review | notes | session: which row kind to open
         val kind = System.getProperty("ggnotes.demo.kind", "overview")
+        if (kind == "session") {
+            // the newest session overview of the first root that has one, once the docs directory is read
+            val steer = dev.ggnotes.steer.SteerService.getInstance(project)
+            steer.addSessionListener(service) {
+                val repo = service.snapshot.repos.firstOrNull { steer.sessionOverviews(it.repo.root).isNotEmpty() } ?: return@addSessionListener
+                if (!done.compareAndSet(false, true)) return@addSessionListener
+                val row = steer.sessionOverviews(repo.repo.root).first()
+                LOG.info("GgNotes demo: opening session overview '${row.entry.doc.title}'")
+                ApplicationManager.getApplication().invokeLater({ stage(project, service) { steer.showOverview(row.session, row.entry, keepAnchor = false) } }, project.disposed)
+            }
+            return
+        }
         service.addSnapshotListener(service) {
             val repo = service.snapshot.repos.firstOrNull { r ->
                 r.model.commits.any { c ->
@@ -64,6 +76,14 @@ class GgNotesStartupActivity : ProjectActivity {
                     ({ service.open(overview, repo.repo) })
                 }
             }
+            stage(project, service, opener)
+        }
+    }
+
+    /** Open the tool window, run [opener] in it, walk to the demo anchor and paint the frame when asked. */
+    private fun stage(project: Project, service: OverviewService, opener: () -> Unit) {
+        val tw = ToolWindowManager.getInstance(project).getToolWindow(OverviewService.TOOL_WINDOW_ID) ?: return
+        run {
             tw.activate({
                 opener()
                 // ggnotes.demo.anchor = which anchor the demo goes to (default 1)

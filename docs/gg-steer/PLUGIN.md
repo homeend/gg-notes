@@ -17,12 +17,14 @@ With the project open, an agent in a terminal can say:
 | `gg session navigate gg://gate/src/a.go@<sha>:40-60 --to ide` | opens `src/a.go` at that commit (read-only revision tab), caret on 40, 40–60 selected; replies `opened src/a.go:40-60` |
 | `gg session navigate --file src/a.go --new-line 12 --to ide` | opens the working file at line 12 |
 | `gg session highlight add src/a.go:3-4 --tone warn --to ide` | a persistent gutter/background marker on 3–4 |
-| `gg session note add src/a.go:3-4 --summary "…" --rationale "…" --to ide` | a read-only remark box beside lines 3–4 (same overlay the overview remarks use); the file counts as "open" |
-| `gg session files --to ide` | the open-files list with ids `f<n>` |
-| `gg session overview add --title "Tour" --file tour.md --to ide` | the overview in the existing tool window, anchors walking the editor |
+| `gg session note add src/a.go:3-4 --summary "…" --rationale "…"` | gg writes `<id>.toml` into the worktree's session docs directory (§5); the IDE shows a read-only remark box beside lines 3–4 (same overlay the overview remarks use) |
+| `gg session files --to ide` | the open-files list with ids `f<n>`, then the session overviews under their document ids |
+| `gg session overview add --title "Tour" --file tour.md` | gg writes `<id>.md` into the session docs directory; the overview is a row of the tool window's **Session** group and opens there (gg steers a `file_focus` for the id when a window is live) |
 | `gg session status` | an `ide: pid …` line (the plugin is live) |
 
-Everything is in the plugin's memory; closing the project forgets it.
+Open files and highlights are the session's; closing the project forgets
+them. Session documents are FILES (§5) that stay until a user or their
+writer deletes them.
 
 ## 2. Presence — be discoverable
 
@@ -98,12 +100,9 @@ Reply prose is English and parsed by agents: use these exact forms.
 | `highlight` | a `RangeHighlighter` (gutter mark + line background in the `tone` colour: info/warn/error) on `start..end` of `file` (`side` `new` or empty = new); kept until `highlight_clear` or the file closes | `marked <file> new:<start>-<end> as <tone>` |
 | `highlight_clear` | remove all; with `file`, only that file's | `cleared every mark` / `cleared the marks on <file>` |
 | `files` | the open-files list | `files: [...]` (§5), `detail: no open files` when empty |
-| `file_focus` | by `file_id` or `file`; `line` → caret | `focused <path>` — ` at line <n>` appended only when the command named a line (an overview: `focused <title>`) / `no open file <name>` |
-| `note_add` | §5 | the note in `notes: [..]` |
-| `note_list` | §5; `file`/`file_id` restricts | `notes: [...]`, `detail: no notes` when empty |
-| `note_show` | §5 | `notes: [the one]` with `text` |
-| `note_rm` | §5 | `removed t<n>` / `no note t<n>` |
-| `overview_add` / `overview_set` / `overview_list` / `overview_show` / `overview_rm` | §5 | §5 |
+| `file_focus` | by `file_id` or `file`; `line` → caret; a `file_id` that is a session document id shows that overview (§5) | `focused <path>` — ` at line <n>` appended only when the command named a line (an overview: `focused <title>`) / `no open file <name>` |
+| `note_add`, `note_list`, `note_show`, `note_rm` | RETIRED (session-docs spec §6.3): a gg that still sends them is older than the files; one notice per root | error `<verb> is retired: write the file (gg session note add)` |
+| `overview_add` / `overview_set` / `overview_list` / `overview_show` / `overview_rm` | RETIRED, as above | error `<verb> is retired: write the file (gg session overview add)` |
 | `focus`, `reload`, `serve` | refuse | error `<cmd> is a gg TUI command` |
 | anything else | refuse | error `unknown command "<cmd>"` (the verb quoted, as the TUI says it) |
 
@@ -112,65 +111,99 @@ project's git roots (compare cleaned, slash-form, case-folded on
 Windows/macOS), reply error `the IDE shows <root>, not <worktree>` and do
 nothing.
 
-## 5. The session memory
+## 5. The session: open files and the session docs directory
 
-Per git root; `f<n>` / `t<n>` counters start at 1 and never reuse an id
-during the session.
+**Open files** (per git root; `f<n>` counters start at 1 and never reuse an
+id during the session) — every file a `navigate`, `file_focus` or
+`highlight` touched: `{id, path, source: worktree|commit, title?, rev?,
+line, state: shown|background, notes}`; `line` = the caret's line now (0
+when the editor is not loaded); `state` `shown` when its tab is the selected
+editor; `notes` = count of session notes on that path (§5.2). Order: most
+recently shown first. A file the user closes leaves the list; its highlights
+go with it. After the files, `files` lists every session overview of the
+worktree as `{id: <document id>, path: <id>.md, source: overview, title,
+state}` (the shown one first).
 
-**Open files** — every file a `navigate`, `file_focus`, `note_add` or
-`overview_add` touched: `{id, path, source: worktree|commit|overview,
-title?, rev?, line, state: shown|background, notes}`; `line` = the caret's
-line now (0 when the editor is not loaded); `state` `shown` when its tab is
-the selected editor; `notes` = count of live notes on it. Order: most
-recently shown first. A file the user closes leaves the list; its notes and
-highlights go with it.
+### 5.1 The directory (session-docs spec §2, §4)
 
-**Temporary notes** (`note_add`): resolve the file as `navigate` would
-(working file unless `target` says otherwise), open it in the background,
-then place the note on `start..end` of the editor's CURRENT `Document` text
-(not the disk). Refuse, in this order, with these strings: `<path> has no
-lines to note` (empty document), `a line number is 1-based`, `the range
-ends before it starts`, `line <n> is past the end of <path> (<len>
-lines)`, `a note needs a summary`, `the summary is longer than 500
-characters`, `the rationale is longer than 4000 characters`, `<path>
-already carries 50 notes`. Store the note's lines' text (its anchor).
+`<inbox>/docs/` — the steer inbox the plugin already resolves, plus
+`docs`. Flat, no sub-directories. A writer (gg's CLI, gg's TUI for the
+agent tours, an agent by hand) creates it; the plugin NEVER creates it,
+never writes a document, and never deletes anything on its own. `<id>.md`
+is an overview (`+++` TOML front matter: `format`, `title` required,
+`author` default `agent`, `created`; then a markdown body whose links are
+anchors — `path`, `path:N`, `path:N-M`, `note:<id>`, the first 100 count);
+`<id>.toml` is a note (`path`, `start`, `end`, `summary`, `rationale`,
+`author`, `created`, `lines` = the text of `start..end` as the writer saw
+it, `[[meta]]`, `[display]`). The id grammar is
+`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`; the file name IS the id.
 
-Draw it like an overview remark (`RemarkOverlay`): a read-only box beside
-the lines, `summary` first, `rationale` under it, `author` dimmed; meta
-badges per `display` when given (store-spec part 2 §6; `key: value` lines
-are acceptable first).
+Ignored unread: names starting with `.`, ending `.tmp`, any other
+extension, directories, files over 512 KiB; ignored after a read: a file
+that does not parse or misses a required key (title; path, start, end,
+summary, lines with exactly `end-start+1` entries). `dev.ggnotes.session`
+holds all of it, table-tested against `docs/gg-session-docs/` (ids, the
+examples, the cold-anchor cases, the schemas).
 
-Re-anchoring on edits — gg's rule, port it exactly:
-- keep, per note, the text it was aligned to (`old`) and its lines;
-- when the document changes (debounce ~200 ms on `DocumentListener`),
-  diff `old` against the current lines (a line-level Myers diff; IntelliJ's
-  `com.intellij.diff.comparison.ComparisonManager` line mode is fine) →
-  a map old-line → current-line for lines that survived unchanged;
-- a NOT-outdated note moves when every line of `start..end` maps and the
-  images are contiguous; otherwise it becomes `outdated` and keeps its
-  numbers clamped into the file;
-- an OUTDATED note comes back when its anchor text is at its old `start`,
-  or at exactly ONE place in the file (two places → stays outdated);
-- then `old` := current lines.
-- `note_show` returns `text` = the lines it sits on now; `outdated: true`
-  in every listing while it is.
+**Reconcile** (every 2 s and on every watcher wake of the inbox or the
+directory), by id: a new id is a new document; a known id whose (size,
+mtime) changed is re-read and REPLACED in place (an open overview is
+re-rendered on the same anchor, a note keeps its on-screen state when its
+path, numbers and lines did not change); an id that is gone is dropped (an
+open overview closes, a note's box goes). Unchanged stamps are not re-read.
+Ids are unique per worktree only: the viewer's identity of a session
+overview carries the worktree (`viewKind = session:<top>\0<id>:`).
 
-**Overviews** (`overview_add --title … [--file md] [--background]`):
-an entry of the open-files list with `source: overview` (id `f<n>`); limits
-and refusals: `an overview needs text`, `the text is over 64 KiB`, `an
-overview needs a title`, `the title must be one line of at most 200
-characters`, at most 20 per root (`20 overviews are open; remove one
-first`); anchors by
-the store-spec part 1 §6 grammar plus `note:t<n>` (an anchor to a
-temporary note → that note's file at its lines), the first 100 count;
-`unresolved` = destinations whose file or note is not found (listed, drawn
-plain). Show it in the overview tool window with the SAME renderer as a
-stored overview (`OverviewService.open` path) unless `background`;
-`overview_set` replaces title/text in place, keeping the walk on the same
-anchor index; `overview_show` returns `text`; `overview_rm` closes it.
-Replies: `showing f<n>` / `added f<n> in the background` /
-`no overview <id>`. `overview_list` → `overviews: [{id, title, state,
-anchors, unresolved?}]`.
+### 5.2 Notes on the editor (spec §4.3, §4.4)
+
+A note file is a box on every editor of its path (`RemarkOverlay.box`):
+summary first (`⚠ outdated · ` prefixed while it is), rationale under it,
+author dimmed, `key: value` lines for its meta. The first 50 notes of a path
+by `created` then id are shown.
+
+Cold anchoring — the first placement against the text the IDE has: (1) if
+`lines` matches the file at `start` → current at `start..end`; (2) else if
+`lines` occurs at exactly one place → current there; (3) else OUTDATED,
+kept at `start..end` clamped into the file (≥ 1, ≤ len). A file with no
+lines makes its notes outdated at 1..1 (listed, nothing marked). After
+that, re-anchoring on edits is the rule of the previous version (gg's
+`reanchor`: a debounced document listener, a Myers line diff, an outdated
+note comes back when its lines are at its old place or at exactly one
+place). A file's live state exists while an editor of it is open; a closed
+file is placed cold again when it opens next. `navigate --step
+next_note|prev_note` walks these placements.
+
+### 5.3 What the tool window shows
+
+The **Session** group above the commits lists the overview files newest
+first by `created` (the file's mtime when absent), then id: title ·
+author · age · `N anchors`, `on screen` while the viewer shows it, `⚠ N
+unresolved` for anchors whose file is not in the worktree or whose note is
+not in the directory (re-checked on every rebuild). Opening one is the
+overview viewer: anchors are live (the working tree), a `note:<id>` anchor
+points at the note's lines now, an unresolved anchor is plain text. gg's
+tours (`tour-brief-…`, `tour-report-…`, author `gg`) are ordinary rows.
+
+**Close vs delete.** Close (the toolbar's X, another row) is local: the
+file and the row stay. **Delete** on a session row confirms, then unlinks
+the file; the editor's menu on a file with session notes offers **Delete
+Session Note** (the note under the caret) and **Delete All Session Notes on
+This File** (every note file naming that path). The reconcile that follows
+does the rest. Never delete on close, on project close, or because a note
+is outdated.
+
+### 5.4 Migration from the in-memory session (0.2.x → 0.3.0)
+
+Dropped: `SessionMemory`'s notes and overviews (`t<n>`, overview `f<n>`
+ids), `TempNotes`, the `note_*`/`overview_*` handlers and their wire
+shapes (`NoteWire`, `OverviewWire`), the 20-overviews cap. Kept: the
+open-files list, `navigate`, `highlight`, `files`, `file_focus`,
+re-anchoring. Added: `dev.ggnotes.session` (names, parser, cold anchoring,
+listing, reconcile), `DocFolder` per root on `SteerService.RootSession`,
+`SessionNoteMarks`, the delete actions. A gg older than the contract that
+sends a retired verb gets the refusal of §4 and the IDE shows one notice
+per root naming the directory it reads instead; with no `docs/` directory
+the Session group is simply absent.
 
 ## 6. Threading and failure rules
 
@@ -202,17 +235,23 @@ purpose — dispatch on them and refuse unknown values with the prose above.
 
 - Unit (no IDE): `Enc`/inbox path for the real example above; presence
   JSON round-trip; drain rules (size cap, bad id, order, delete-before-parse);
-  reply-only-when-wait; the re-anchoring rule with the cases of SPEC §7
-  (`reanchor-cases.json` when gg ships it — until then write the eight
-  cases from PLUGIN §5 yourself); every refusal string of §4/§5.
+  reply-only-when-wait; the re-anchoring rule (`reanchor-cases.json`);
+  every refusal string of §4. Session docs: `id-vectors.json`, the parser
+  against `docs/gg-session-docs/examples/` (CRLF, meta/display, the
+  outdated note, the unresolved anchor) and gg's refusal prose,
+  `cold-anchor-cases.json`, the two schemas against the examples, and a
+  directory test that drops, replaces and removes files by hand.
 - Integration (sandbox IDE, as the v1 acceptance test does): post a
-  `navigate` file and assert the editor state + the reply file; a `note_add`
-  then an edit above the note moves it; `overview_add` shows in the tool
-  window.
+  `navigate` file and assert the editor state + the reply file; drop a note
+  file and an overview file into the worktree's `docs/` by hand and assert
+  the box, the row, `files`, `file_focus`, an edit above the note moving
+  it, a replaced file replaced in place, a removed file gone, and the
+  deletes unlinking only what they name.
 - Acceptance (SPEC §8) once the gg binary has `--to ide`.
 
 ## 9. Out of scope
 
 Serving HTTP; multiple IDE windows on one worktree; `focus`/`reload`/
 `serve`; preview/ref/pair targets; old-side lines; writing to the notes
-store; anything that needs gg running.
+store; writing session documents (the writer side is session-docs spec §5);
+anything that needs gg running.

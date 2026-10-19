@@ -17,7 +17,11 @@ against its handler.
   landings carrying the TUI's exact `detail` prose (read from its handlers;
   the TUI answers them asynchronously so its test skips them), `tui_only`
   cases with an `ide_only` twin, and the IDE's own refusals. The plugin runs
-  every case that is not `tui_only` against its handler.
+  every case that is not `tui_only` against its handler. THIS COPY differs
+  from gg's in one case: `note on nothing` (`note_show t9`) expects the
+  session-docs refusal `note_show is retired: write the file (gg session
+  note add)` (session-docs spec §6.3), which gg's corpus does not carry yet;
+  refresh the copy once gg converts its retired cases.
 - `reanchor-cases.json` — gg's exact-line re-anchoring of temporary notes
   (spec §5), eight cases (`internal/agentdocs` `TestReanchorCases`).
 - `repokey-vectors.json` — `EncodeRepoKey` inputs/outputs for the inbox path
