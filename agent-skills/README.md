@@ -1,25 +1,25 @@
-# air skills — notes, overviews and reviews for an agent in the IDE
+# agent skills — notes, overviews and reviews for an agent in the IDE
 
 Three agent skills for an AI agent that works beside a JetBrains IDE with
 this plugin installed. The agent writes plain files into the worktree's
 session-docs directory; the plugin shows them — overviews in the tool
-window's "This session" group, notes as remark boxes in the editor. The
+window's "Session" group, notes as remark boxes in the editor. The
 skills need only git and a shell: no other tool, server or process.
 
 | skill | what the agent does |
 |---|---|
-| `air-overview` | presents a result or a change: notes on the exact lines plus an overview whose links open the code. `FILES.md` beside it is the file recipe all three use |
-| `air-review` | reviews a commit, a branch or the working changes: one note per remark (meta `kind`/`severity`/`intent`/`confidence`) plus an overview that is the review (summary, findings, verdict) |
-| `air-cross-review` | runs 2–3 subagents on models the user picks, merges their reviews, settles their disagreements, writes one review |
+| `agent-overview` | presents a result or a change: notes on the exact lines plus an overview whose links open the code. `FILES.md` beside it is the file recipe all three use |
+| `agent-review` | reviews a commit, a branch or the working changes: one note per remark (meta `kind`/`severity`/`intent`/`confidence`) plus an overview that is the review (summary, findings, verdict) |
+| `agent-cross-review` | runs 2–3 subagents on models the user picks, merges their reviews, settles their disagreements, writes one review |
 
 ## Install
 
 Copy all three directories into your agent's skills directory, side by
-side (the review skills read `../air-overview/FILES.md`):
+side (the review skills read `../agent-overview/FILES.md`):
 
 ```sh
-cp -r air-skills/air-* ~/.claude/skills/          # Claude Code, every project
-cp -r air-skills/air-* <project>/.claude/skills/  # Claude Code, one project
+cp -r agent-skills/agent-* ~/.claude/skills/          # Claude Code, every project
+cp -r agent-skills/agent-* <project>/.claude/skills/  # Claude Code, one project
 ```
 
 Other agents: put them where the agent loads skills, or point its

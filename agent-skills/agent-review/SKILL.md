@@ -1,19 +1,19 @@
 ---
-name: air-review
-description: Use when the user asks you to review a change (a commit, a branch or uncommitted work) and show the review in their JetBrains IDE with the gg-notes plugin — remarks on the exact lines plus a summary with findings and a verdict.
+name: agent-review
+description: Use when the user asks you to review a change (a commit, a branch or uncommitted work) and show the review in their JetBrains IDE with the AgentNotes plugin — remarks on the exact lines plus a summary with findings and a verdict.
 argument-hint: "[commit | branch | working] [what to focus on]"
 ---
 
-# air-review — a full review shown in the IDE
+# agent-review — a full review shown in the IDE
 
 Review one change and write it as files the IDE shows: one **note** per
 remark, on the exact lines, and one **overview** that is the review itself —
 summary, findings (each one a link to its remark), verdict. The user opens
-the review in the IDE's tool window ("This session") and walks the
+the review in the IDE's Agent Notes tool window ("Session" group) and walks the
 findings.
 
-**How to write the files is in the air-overview skill's FILES.md
-(`../air-overview/FILES.md`, installed beside this skill) — read it first.**
+**How to write the files is in the agent-overview skill's FILES.md
+(`../agent-overview/FILES.md`, installed beside this skill) — read it first.**
 It also says the rule that shapes every review here: a note and an anchor
 point at files AS THEY ARE ON DISK in the worktree the IDE shows.
 
@@ -84,7 +84,7 @@ commands and identifiers stay exactly as they are.
    Write each link bare — backticks around a link make it plain text.
 5. **A walkthrough (only when asked).** When the user says "overview",
    "tour" or "walk me through", add a second overview file, written by
-   the air-overview skill's "What the overview says" (its sections, scaled
+   the agent-overview skill's "What the overview says" (its sections, scaled
    to the change). The review stays the judgement; the walkthrough only
    explains. Otherwise write no walkthrough.
 6. **Check** (FILES.md §7), then **show it** (FILES.md §6, optional).

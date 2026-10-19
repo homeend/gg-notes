@@ -1,19 +1,19 @@
 ---
-name: air-cross-review
-description: Use when the user asks for a cross-review — 2 or 3 reviewers on different models review one change, you settle their disagreements and show one merged review in their JetBrains IDE with the gg-notes plugin.
+name: agent-cross-review
+description: Use when the user asks for a cross-review — 2 or 3 reviewers on different models review one change, you settle their disagreements and show one merged review in their JetBrains IDE with the AgentNotes plugin.
 argument-hint: "[commit | branch | working] [2|3] [what to focus on]"
 ---
 
-# air-cross-review — several models review, you settle it
+# agent-cross-review — several models review, you settle it
 
 Run 2 or 3 **subagents**, each on a DIFFERENT model, over one change. Merge
 their reviews, investigate every point they disagree on yourself, and write
-ONE review as files the IDE shows — the same shape as the air-review skill:
+ONE review as files the IDE shows — the same shape as the agent-review skill:
 one note per remark and one overview that is the review.
 
-**How to write the files is in the air-overview skill's FILES.md
-(`../air-overview/FILES.md`); the review's shape is the air-review skill
-(`../air-review/SKILL.md`), both installed beside this skill — read both
+**How to write the files is in the agent-overview skill's FILES.md
+(`../agent-overview/FILES.md`); the review's shape is the agent-review skill
+(`../agent-review/SKILL.md`), both installed beside this skill — read both
 first.**
 
 **Wording.** Write every text the user reads — the merged summary, the
@@ -24,9 +24,9 @@ reviewer the same rule.
 
 ## Steps
 
-1. **What is reviewed** — air-review step 1: the reviewed version must be
+1. **What is reviewed** — agent-review step 1: the reviewed version must be
    checked out in the worktree the IDE shows; otherwise ask and stop. Work
-   out the range and the base (air-review step 2) once; every reviewer
+   out the range and the base (agent-review step 2) once; every reviewer
    gets the same values.
 2. **How many.** The number the user gave. Missing, or not 2 or 3 → ask:
    "2 or 3 reviewers?"
@@ -62,7 +62,7 @@ reviewer the same rule.
 6. **Write the files** (FILES.md): one note per kept remark, then one
    overview, `title = "Cross-review: <what was reviewed>"`, `author =
    "<you> — cross-review (<model1>, <model2>[, <model3>])"`. A walkthrough
-   only when the user asked for one (air-review step 5), written by YOU.
+   only when the user asked for one (agent-review step 5), written by YOU.
 7. **Check** (FILES.md §7), then **show it** (FILES.md §6, optional).
 8. **Reply** with the verdict first, each reviewer and its verdict, how
    many findings were agreed, how many disputed and how you ruled, the
@@ -107,7 +107,7 @@ lines apart in the same function) and they describe the same problem.
   `raised_by` = your own name.
 
 Every note's meta also carries `kind`, `severity`, `intent` and
-`confidence` (air-review step 3).
+`confidence` (agent-review step 3).
 
 The overview's body:
 
