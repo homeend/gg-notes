@@ -59,6 +59,8 @@ class RepoOverviews(
     val error: String?,
     /** Working reviews whose `files[].blob` no longer match the tree, by review id (SPEC-part2 §5.1). */
     val treeChanged: Map<String, List<String>> = emptyMap(),
+    /** The current tip of every branch an overview or review names (null = the branch is gone): gg's on-branch vs was-tip. */
+    val branchTips: Map<String, String?> = emptyMap(),
 )
 
 /** What the tool window shows: every repository of the project. */
@@ -195,7 +197,15 @@ class OverviewService(private val project: Project) : Disposable {
                 }
                 val changed = HashMap<String, List<String>>()
                 for (w in model.working) for (rv in w.reviews) treeChanged(rv, repo).takeIf { it.isNotEmpty() }?.let { changed[rv.id] = it }
-                RepoOverviews(repo, dir, contents, head, model, null, changed)
+                // the branches the rows name, resolved once per refresh: a row says "branch x" while x is still at its commit, "was x" after
+                val branches = LinkedHashSet<String>()
+                for (c in model.commits) {
+                    c.overviews.forEach { if (it.branch.isNotBlank()) branches += it.branch }
+                    c.reviews.forEach { if (it.record.address.branch.isNotBlank()) branches += it.record.address.branch }
+                }
+                val tips = HashMap<String, String?>()
+                for (b in branches) tips[b] = GitAccess.revParse(project, repo.root, b)
+                RepoOverviews(repo, dir, contents, head, model, null, changed, tips)
             }
         }
         signature = sig
