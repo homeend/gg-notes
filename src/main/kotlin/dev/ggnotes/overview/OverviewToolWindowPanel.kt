@@ -117,8 +117,19 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
                 if (tree.selectionPath != path) tree.selectionPath = path
             }
         })
-        com.intellij.ui.PopupHandler.installPopupMenu(
-            tree, com.intellij.openapi.actionSystem.DefaultActionGroup(RemoveFromStoreAction()), "GgNotesTreePopup")
+        // the row's Delete: the context menu and the Delete key run the same confirm-then-delete
+        val remove = RemoveFromStoreAction()
+        com.intellij.ui.PopupHandler.installPopupMenu(tree, com.intellij.openapi.actionSystem.DefaultActionGroup(remove), "GgNotesTreePopup")
+        remove.registerCustomShortcutSet(com.intellij.openapi.actionSystem.CommonShortcuts.getDelete(), tree, this)
+        // a double-click opens the row (its first click selected it) and gives the document the whole window
+        object : com.intellij.ui.DoubleClickListener() {
+            override fun onDoubleClick(event: java.awt.event.MouseEvent): Boolean {
+                val path = tree.getPathForLocation(event.x, event.y) ?: return false
+                if (tree.selectionPath != path) tree.selectionPath = path
+                openSelectedFullArea()
+                return true
+            }
+        }.installOn(tree)
 
         status.border = JBUI.Borders.empty(4, 8)
         status.isVisible = false
@@ -342,6 +353,24 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
 
     /** The selected row's user object, for tests. */
     internal val selectedRow: Any? get() = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject
+
+    /** The tree, for tests (the Delete key binding lives on it). */
+    internal val treeComponent: JTree get() = tree
+
+    /**
+     * What a double-click on a row does: with a document row selected (selecting it opened it,
+     * or started opening it in the background), hide the list so the document takes the whole
+     * window — the Document Only state, which the toolbar toggle or Close brings back.
+     */
+    internal fun openSelectedFullArea() {
+        val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return
+        val opensADocument = when (node.userObject) {
+            is OverviewNode, is ReviewNode, is FileNode, is ThreadNode, is ReplyNode, is SessionOverviewNode -> true
+            else -> false
+        }
+        if (!opensADocument) return
+        service.setListHidden(true)
+    }
 
     /** Whether the document half is in the splitter, for tests. */
     internal val documentShown: Boolean get() = splitter.secondComponent != null
