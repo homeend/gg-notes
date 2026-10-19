@@ -186,3 +186,17 @@ included), `reanchor-cases.json` (the eight re-anchoring cases),
   code; the acceptance scenario of §3.2 is the manual gate.
 - Report any place where the real store differs from the spec — that is a
   spec bug to feed back to gigagit, not something to work around silently.
+
+## 8. Session docs — the next contract (coming)
+
+Agents will write what they show during work as FILES, with no gg process
+in the path: `<steer inbox>/docs/<id>.md` (an overview: `+++` TOML front
+matter, then markdown whose links are anchors) and `<id>.toml` (a note on
+working-tree lines, carrying the lines it was written on). Every gg reader
+of the worktree — the TUI, gg web, this plugin — lists the directory and
+shows what is there; the in-memory `overview_*`/`note_*` steer verbs are
+retired once gg's side lands. Read `docs/gg-session-docs/SPEC.md`; the
+reader can be built now against `docs/gg-session-docs/examples/`,
+`cold-anchor-cases.json` and `id-vectors.json`. The gigagit side is on
+branch `spec/gg-session-docs` (part 1: the file layer; parts 2–4: the TUI,
+gg web, the CLI and skills).
