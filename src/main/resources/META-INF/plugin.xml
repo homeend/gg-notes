@@ -23,6 +23,14 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.4.3</h3>
+        <ul>
+            <li>Fixed: a note or remark box could be far taller than its text, with the text
+                running past its right border. The box was measured once, often while the editor
+                was still narrow, then painted at the editor's later width. It now paints the lines
+                it measured and re-measures whenever the editor's width changes.</li>
+        </ul>
+
         <h3>0.4.2</h3>
         <ul>
             <li><b>Copy Link</b> on a Session row (context menu, or Ctrl+C) and <b>Copy Session Note

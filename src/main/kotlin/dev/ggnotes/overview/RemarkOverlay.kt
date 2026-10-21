@@ -95,6 +95,7 @@ object RemarkOverlay {
                 start, InlayProperties().showAbove(true).relatesToPrecedingText(false).priority(100),
                 RemarkBox(remark))
             if (inlay != null) Disposer.register(o, inlay)
+            reflowOnResize(editor)
         }
     }
 
@@ -127,11 +128,44 @@ object RemarkOverlay {
         out += com.intellij.openapi.Disposable { if (h.isValid) h.dispose() }
         editor.inlayModel.addBlockElement(start, InlayProperties().showAbove(true).relatesToPrecedingText(false).priority(100), RemarkBox(remark))
             ?.let { out += it }
+        reflowOnResize(editor)
         return out
+    }
+
+    private val REFLOWS: Key<Boolean> = Key.create("dev.ggnotes.remarkBoxReflow")
+
+    /**
+     * Once per editor: when its visible width changes (the tool window opens or closes, the IDE
+     * window is resized, the editor first gets its size), every remark box in it re-measures.
+     */
+    private fun reflowOnResize(editor: Editor) {
+        if (editor.getUserData(REFLOWS) == true) return
+        editor.putUserData(REFLOWS, true)
+        editor.scrollingModel.addVisibleAreaListener { e ->
+            if (e.oldRectangle?.width != e.newRectangle.width) reflow(editor)
+        }
+    }
+
+    /** Re-measure every remark box of [editor] (EDT). */
+    fun reflow(editor: Editor) {
+        if (editor.isDisposed) return
+        for (inlay in editor.inlayModel.getBlockElementsInRange(0, editor.document.textLength, RemarkBox::class.java)) inlay.update()
     }
 
     /** The remark box: summary in bold, rationale (wrapped) beneath, drawn above the first remarked line. */
     class RemarkBox(val remark: Remark) : EditorCustomElementRenderer {
+
+        /** How many text lines the last paint drew (tests compare it with the height the box reserved). */
+        @Volatile internal var paintedLines: Int = 0
+
+        /**
+         * The lines as the editor last MEASURED them. The editor asks for the size only when the box
+         * is added or updated, so paint must draw these, never a fresh wrap at today's width: that
+         * left a tall box with three lines in it, or lines past the right border.
+         */
+        @Volatile private var measured: List<Pair<String, Boolean>>? = null
+
+        private fun measure(editor: Editor): List<Pair<String, Boolean>> = lines(editor).also { measured = it }
 
         private fun font(editor: Editor): Font = editor.colorsScheme.getFont(EditorFontType.PLAIN)
 
@@ -162,11 +196,12 @@ object RemarkOverlay {
         override fun calcWidthInPixels(inlay: Inlay<*>): Int {
             val editor = inlay.editor
             val metrics = editor.contentComponent.getFontMetrics(font(editor))
-            return lines(editor).maxOf { metrics.stringWidth(it.first) } + JBUI.scale(16)
+            val bold = editor.contentComponent.getFontMetrics(font(editor).deriveFont(Font.BOLD))
+            return measure(editor).maxOf { (text, isSummary) -> (if (isSummary) bold else metrics).stringWidth(text) } + JBUI.scale(16)
         }
 
         override fun calcHeightInPixels(inlay: Inlay<*>): Int =
-            lines(inlay.editor).size * inlay.editor.lineHeight + JBUI.scale(8)
+            measure(inlay.editor).size * inlay.editor.lineHeight + JBUI.scale(8)
 
         override fun paint(inlay: Inlay<*>, g: Graphics, target: Rectangle, textAttributes: TextAttributes) {
             val editor = inlay.editor
@@ -183,11 +218,13 @@ object RemarkOverlay {
                 val bold = plain.deriveFont(Font.BOLD)
                 val metrics = editor.contentComponent.getFontMetrics(plain)
                 var y = target.y + JBUI.scale(4) + metrics.ascent
-                for ((text, isSummary) in lines(editor)) {
+                val drawn = measured ?: measure(editor)
+                for ((text, isSummary) in drawn) {
                     g2.font = if (isSummary) bold else plain
                     g2.drawString(text, target.x + JBUI.scale(8), y)
                     y += editor.lineHeight
                 }
+                paintedLines = drawn.size
             } finally {
                 g2.dispose()
             }
