@@ -23,6 +23,14 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.4.2</h3>
+        <ul>
+            <li><b>Copy Link</b> on a Session row (context menu, or Ctrl+C) and <b>Copy Session Note
+                Link</b> on a note box (editor context menu) copy one line that names the document,
+                its worktree and its file. Paste it to an agent with what you want done; the agent
+                skills read the file it names.</li>
+        </ul>
+
         <h3>0.4.1</h3>
         <ul>
             <li>The tool window is shown as <b>Agent Notes</b> on the stripe and in its header
@@ -214,6 +222,9 @@
         <action id="GgNotes.Close" class="dev.ggnotes.overview.CloseOverviewAction"/>
         <action id="GgNotes.DocumentOnly" class="dev.ggnotes.overview.DocumentOnlyAction"/>
         <!-- the editor's menu on a file that carries session notes (session-docs SPEC §4.4: Delete is a row/marker action) -->
+        <action id="GgNotes.CopySessionNoteLink" class="dev.ggnotes.steer.CopySessionNoteLinkAction">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
         <action id="GgNotes.DeleteSessionNote" class="dev.ggnotes.steer.DeleteSessionNoteAction">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>

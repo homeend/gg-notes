@@ -124,5 +124,6 @@ link make it plain text (FILES.md §5). ≤ 64 KiB, ≤ 100 anchors.
    a three-line summary. Do not paste the overview into the chat — it is
    in the IDE.
 
-When the user later pastes a note or an anchor reference, read that file
-(`<docs>/<id>.toml` or `<id>.md`) — that is the step they ask about.
+When the user later pastes a link copied in the IDE (`Agent Notes overview
+…` or `Agent Notes note …`), follow FILES.md §8: read the file it names —
+that is the document or the step they ask about — and work in its worktree.

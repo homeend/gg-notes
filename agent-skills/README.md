@@ -12,6 +12,13 @@ skills need only git and a shell: no other tool, server or process.
 | `agent-review` | reviews a commit, a branch or the working changes: one note per remark (meta `kind`/`severity`/`intent`/`confidence`) plus an overview that is the review (summary, findings, verdict) |
 | `agent-cross-review` | runs 2–3 subagents on models the user picks, merges their reviews, settles their disagreements, writes one review |
 
+## Pasting a document back to an agent
+
+In the IDE, **Copy Link** on a "Session" row (or Ctrl+C) and **Copy Session
+Note Link** on a note box copy one line that names the document, its
+worktree and its file. Paste it to an agent with what you want ("fix
+this"); the skills read the file it names (`agent-overview/FILES.md` §8).
+
 ## Install
 
 Copy all three directories into your agent's skills directory, side by
