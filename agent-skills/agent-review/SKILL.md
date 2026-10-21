@@ -95,3 +95,9 @@ commands and identifiers stay exactly as they are.
 A question about ONE file or line ("what does this function do?", "is this
 safe?") is not a review: answer it, and write one note (FILES.md §4) if a
 note helps.
+
+When the user pastes a link copied in the IDE (`Agent Notes note …` from a
+remark, `Agent Notes overview …` from a review), follow
+`../agent-overview/FILES.md` §8: read the file it names and act on that
+remark or review — for example fix what the remark names.
+

@@ -119,8 +119,11 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         })
         // the row's Delete: the context menu and the Delete key run the same confirm-then-delete
         val remove = RemoveFromStoreAction()
-        com.intellij.ui.PopupHandler.installPopupMenu(tree, com.intellij.openapi.actionSystem.DefaultActionGroup(remove), "GgNotesTreePopup")
+        // Copy Link: a session row's line for an agent (the menu item and Ctrl+C are one action)
+        val copyLink = CopyLinkAction()
+        com.intellij.ui.PopupHandler.installPopupMenu(tree, com.intellij.openapi.actionSystem.DefaultActionGroup(copyLink, remove), "GgNotesTreePopup")
         remove.registerCustomShortcutSet(com.intellij.openapi.actionSystem.CommonShortcuts.getDelete(), tree, this)
+        copyLink.registerCustomShortcutSet(com.intellij.openapi.actionSystem.CommonShortcuts.getCopy(), tree, this)
         // a double-click opens the row (its first click selected it) and gives the document the whole window
         object : com.intellij.ui.DoubleClickListener() {
             override fun onDoubleClick(event: java.awt.event.MouseEvent): Boolean {
@@ -244,6 +247,36 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
             is GroupNode -> dev.ggnotes.store.RemovalPlan.forCommit(u.entry) to u.repo
             is WorkingNode -> dev.ggnotes.store.RemovalPlan.forWorking(u.entry) to u.repo
             else -> null
+        }
+    }
+
+    /** The selected row's link (a session overview row only), or null. */
+    private fun linkOfSelected(): String? {
+        val u = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? SessionOverviewNode ?: return null
+        return steer.overviewLink(u.row.session, u.row.entry.doc)
+    }
+
+    /** Copy the selected row's link to the clipboard and return it; null (and the clipboard untouched) for a row without one. */
+    internal fun copyLinkOfSelected(): String? {
+        val link = linkOfSelected() ?: return null
+        com.intellij.openapi.ide.CopyPasteManager.getInstance().setContents(java.awt.datatransfer.StringSelection(link))
+        return link
+    }
+
+    /** "Copy Link" on a session row: one line naming the document, its worktree and its file, for an agent to read. */
+    private inner class CopyLinkAction : com.intellij.openapi.actionSystem.AnAction(
+        GgNotesBundle.message("action.GgNotes.CopyLink.text"),
+        GgNotesBundle.message("action.GgNotes.CopyLink.description"),
+        com.intellij.icons.AllIcons.Actions.Copy,
+    ) {
+        override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.EDT
+
+        override fun update(e: com.intellij.openapi.actionSystem.AnActionEvent) {
+            e.presentation.isEnabledAndVisible = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject is SessionOverviewNode
+        }
+
+        override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) {
+            copyLinkOfSelected()
         }
     }
 

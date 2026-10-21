@@ -33,6 +33,22 @@ private fun context(e: AnActionEvent): NoteContext? {
     return null
 }
 
+/** Copy the link of the session note under the caret: one line naming the note, where it sits now, its worktree and its file. */
+class CopySessionNoteLinkAction : AnAction(), DumbAware {
+    override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = context(e)?.atCaret != null
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val ctx = context(e) ?: return
+        val (note, _) = ctx.atCaret ?: return
+        val link = SteerService.getInstance(e.project ?: return).noteLink(ctx.session, note)
+        com.intellij.openapi.ide.CopyPasteManager.getInstance().setContents(java.awt.datatransfer.StringSelection(link))
+    }
+}
+
 /** Delete the session note under the caret: its file in the worktree's session docs is unlinked (session-docs SPEC §4.4). */
 class DeleteSessionNoteAction : AnAction(), DumbAware {
     override fun getActionUpdateThread() = ActionUpdateThread.EDT

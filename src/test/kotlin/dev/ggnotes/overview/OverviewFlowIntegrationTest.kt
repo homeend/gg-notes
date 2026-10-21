@@ -752,6 +752,77 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         }
     }
 
+    /**
+     * "Copy Link" makes a session overview row and a session note addressable: the clipboard gets
+     * one line naming the document, its worktree and its file, which an agent pastes and reads.
+     * Ctrl+C on the tree does the same; a stored row offers no link.
+     */
+    fun testCopyLinkOfASessionRowAndOfASessionNote() {
+        val steer = dev.ggnotes.steer.SteerService.getInstance(project)
+        val session = ApplicationManager.getApplication().executeOnPooledThread<List<dev.ggnotes.steer.SteerService.RootSession>> { steer.startSync() }.get().single()
+        val docs = session.docsDir
+        Files.createDirectories(docs)
+        Files.writeString(docs.resolve("ov-1.md"), "+++\ntitle = 'Risk \"module\"'\n+++\nsee [gate](internal/x/gate.go:4)\n")
+        Files.writeString(docs.resolve("n-1.toml"), "path = 'internal/x/gate.go'\nstart = 4\nend = 4\nsummary = 'Returns the flag.'\nlines = ['\treturn open']\n")
+        steer.reloadDocs()
+        waitFor("the row") { steer.sessionOverviews(root).size == 1 }
+        val service = OverviewService.getInstance(project)
+        val previous = service.ui
+        val panel = OverviewToolWindowPanel(project)
+        try {
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertNull("nothing selected: nothing to copy", panel.copyLinkOfSelected())
+            steer.showOverview(session, steer.sessionOverviews(root).single().entry, keepAnchor = false)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            val link = panel.copyLinkOfSelected()
+            assertEquals("Agent Notes overview ov-1 \"Risk \\\"module\\\"\" (worktree ${session.topLevel}; file ${docs.resolve("ov-1.md")})", link)
+            assertEquals(link, com.intellij.openapi.ide.CopyPasteManager.getInstance().getContents<String>(java.awt.datatransfer.DataFlavor.stringFlavor))
+
+            // the context menu item and Ctrl+C are one action, shown as Copy Link
+            val copyKey = com.intellij.openapi.actionSystem.ex.ActionUtil.getActions(panel.treeComponent).filter { a ->
+                a.shortcutSet.shortcuts.any { it is com.intellij.openapi.actionSystem.KeyboardShortcut && it.firstKeyStroke.keyCode == java.awt.event.KeyEvent.VK_C && it.firstKeyStroke.modifiers != 0 }
+            }
+            assertEquals("one action answers Ctrl+C", 1, copyKey.size)
+            assertEquals("Copy Link", copyKey.single().templatePresentation.text)
+
+            // a stored overview row has no link
+            val snapshot = ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { service.refreshSync() }.get()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)!!
+            service.open(snapshot.repos.single().model.commits.single { it.commit == sha }.overviews.single { it.id == "7cf0812f" }, repo)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertNotNull(panel.selectedRow)
+            assertNull(panel.copyLinkOfSelected())
+        } finally {
+            service.close()
+            com.intellij.openapi.util.Disposer.dispose(panel)
+            service.ui = previous
+        }
+
+        // a session note on the editor: the editor menu's Copy Session Note Link at the caret
+        val gate = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(File(repoDir, "internal/x/gate.go"))!!
+        ApplicationManager.getApplication().invokeAndWait {
+            FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, gate, 3, 0), true)
+        }
+        val editor = FileEditorManager.getInstance(project).selectedTextEditor!!
+        waitFor("the note box") { editor.inlayModel.getBlockElementsInRange(0, editor.document.textLength).size == 1 }
+        val action = dev.ggnotes.steer.CopySessionNoteLinkAction()
+        val context = com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
+            .add(com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT, project)
+            .add(com.intellij.openapi.actionSystem.CommonDataKeys.EDITOR, editor)
+            .add(com.intellij.openapi.actionSystem.CommonDataKeys.VIRTUAL_FILE, gate).build()
+        val atNote = com.intellij.testFramework.TestActionEvent.createTestEvent(action, context)
+        action.update(atNote)
+        assertTrue("offered with the caret on the note", atNote.presentation.isEnabledAndVisible)
+        action.actionPerformed(atNote)
+        assertEquals("Agent Notes note n-1 at internal/x/gate.go:4 \"Returns the flag.\" (worktree ${session.topLevel}; file ${docs.resolve("n-1.toml")})",
+            com.intellij.openapi.ide.CopyPasteManager.getInstance().getContents<String>(java.awt.datatransfer.DataFlavor.stringFlavor))
+        ApplicationManager.getApplication().invokeAndWait { editor.caretModel.moveToOffset(0) }
+        val away = com.intellij.testFramework.TestActionEvent.createTestEvent(action, context)
+        action.update(away)
+        assertFalse("not offered away from a note", away.presentation.isEnabledAndVisible)
+    }
+
     private fun write(rel: String, text: String) {
         val f = File(repoDir, rel)
         f.parentFile.mkdirs()

@@ -123,3 +123,9 @@ The overview's body:
   one-line reason; it may differ from every reviewer's.
 
 Write each link bare — backticks around a link make it plain text.
+
+When the user pastes a link copied in the IDE (`Agent Notes note …` from a
+remark, `Agent Notes overview …` from a review), follow
+`../agent-overview/FILES.md` §8: read the file it names and act on that
+remark or review — for example fix what the remark names.
+

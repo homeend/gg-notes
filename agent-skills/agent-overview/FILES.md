@@ -189,3 +189,39 @@ no fresh `ide.json`: say in one line that the overview is in the Agent Notes too
   file.
 - Optional: parse a file you wrote (`python3 -c "import tomllib,sys;
   tomllib.load(open(sys.argv[1],'rb'))" <file>` for a note).
+
+## 8. A link the user pastes
+
+In the IDE, **Copy Link** on a row of the "Session" group (or Ctrl+C on
+the row) and **Copy Session Note Link** on a note box (editor context
+menu, caret on the note) copy ONE line:
+
+```
+Agent Notes overview <id> "<title>" (worktree <path>; file <path>)
+Agent Notes note <id> at <path>:<N>[-<M>][ (outdated)] "<summary>" (worktree <path>; file <path>)
+```
+
+When the user's message holds such a line:
+
+1. **Read the file** after `file`. It is the document: a note (§4) or an
+   overview (§5). An overview's `note:<id>` anchor is `<id>.toml` in the
+   same directory. From WSL, read a Windows path through `wslpath -u`:
+   `cat "$(wslpath -u 'C:\Users\…\docs\<id>.toml')"`.
+2. **Work in the worktree** after `worktree` (from WSL: `wslpath -u` too).
+   A note's `path` and an overview's anchors are relative to it. If you
+   run in another checkout, say so in one line and use the worktree's
+   files.
+3. **A note: `at` is where it sits NOW.** The IDE moved the note as the
+   file changed, so `at` can differ from the file's `start`/`end`. Read
+   those lines from the file on disk. The note's `lines` are the text it
+   was written on; `(outdated)` means those lines were edited since — read
+   the file around them and say what changed.
+4. **Do what the user asks about it**: fix what the note names, answer a
+   question about a step, go on with the work the overview describes. A
+   message with ONLY the link: say in three lines what the document says
+   and what you would do next, then wait.
+5. **The document stays.** Do not delete or rewrite it because you acted
+   on it. When your fix makes a note obsolete, say so in the reply (the
+   user deletes it: tree or editor menu → Delete); delete it yourself only
+   when the user asks.
+

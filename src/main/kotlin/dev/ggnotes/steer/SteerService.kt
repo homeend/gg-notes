@@ -250,6 +250,16 @@ class SteerService(private val project: Project) : Disposable {
         )
     }
 
+    /** "Copy Link" of a session overview row (see [dev.ggnotes.session.SessionDocRefs]). */
+    fun overviewLink(s: RootSession, doc: dev.ggnotes.session.SessionOverviewDoc): String =
+        dev.ggnotes.session.SessionDocRefs.overviewLink(doc.id, doc.title, Path.of(s.topLevel).toString(),
+            s.docs.fileOf(dev.ggnotes.session.DocName(doc.id, dev.ggnotes.session.DocKind.OVERVIEW)).toString())
+
+    /** "Copy Session Note Link": the note where it sits now. */
+    fun noteLink(s: RootSession, doc: dev.ggnotes.session.SessionNoteDoc): String =
+        dev.ggnotes.session.SessionDocRefs.noteLink(doc.id, doc.path, s.marks.placementOf(doc), doc.summary, Path.of(s.topLevel).toString(),
+            s.docs.fileOf(dev.ggnotes.session.DocName(doc.id, dev.ggnotes.session.DocKind.NOTE)).toString())
+
     fun isShown(s: RootSession, id: String): Boolean =
         dev.ggnotes.overview.OverviewService.getInstance(project).open?.overview?.viewKind == viewKind(s, id)
 

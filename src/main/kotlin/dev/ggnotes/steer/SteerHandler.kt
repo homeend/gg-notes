@@ -319,7 +319,7 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             val e = s.docs.index.overview(id) ?: run { service.reloadDocsNow(s); s.docs.index.overview(id) }
             if (e != null) {
                 service.showOverview(s, e, keepAnchor = true)
-                return Reply.ok(c.id, "focused " + overviewName(e.doc.id, e.doc.title))
+                return Reply.ok(c.id, "focused " + dev.ggnotes.session.SessionDocRefs.overviewName(e.doc.id, e.doc.title))
             }
         }
         val entry = (if (!c.fileId.isNullOrEmpty()) s.memory.findFile(c.fileId) else s.memory.findFileByPath(name))
@@ -374,22 +374,6 @@ class SteerHandler(private val project: Project, private val service: SteerServi
 
     // ---- helpers -------------------------------------------------------------------------
 
-    /** gg's `agentdocs.OverviewName`: `overview <id> "<title>"`, the title Go-quoted. */
-    private fun overviewName(id: String, title: String): String {
-        val quoted = StringBuilder("\"")
-        for (ch in title) {
-            when {
-                ch == '"' -> quoted.append("\\\"")
-                ch == '\\' -> quoted.append("\\\\")
-                ch == '\n' -> quoted.append("\\n")
-                ch == '\t' -> quoted.append("\\t")
-                ch == '\r' -> quoted.append("\\r")
-                ch.code < 0x20 || ch.code == 0x7f -> quoted.append("\\x%02x".format(ch.code))
-                else -> quoted.append(ch)
-            }
-        }
-        return "overview $id " + quoted.append('"')
-    }
 
     private fun onEdt(block: () -> Unit) {
         if (ApplicationManager.getApplication().isDispatchThread) block() else ApplicationManager.getApplication().invokeAndWait(block)
