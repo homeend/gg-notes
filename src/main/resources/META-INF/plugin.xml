@@ -23,6 +23,13 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.4.5</h3>
+        <ul>
+            <li>Fixed for 2025.3 and later: opening a file's staged copy (an agent's navigate to
+                the index) failed with NoSuchMethodError, git4idea having renamed the lookup.</li>
+            <li>No internal IDE API on 2026.2: the plugin reports its version from its own build
+                stamp instead of the IDE's plugin registry.</li>
+        </ul>
         <h3>0.4.4</h3>
         <ul>
             <li>New: Hide notes / Show notes in the bar above a file opened from an overview. It
