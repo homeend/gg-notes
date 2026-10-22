@@ -16,6 +16,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.AppExecutorUtil
+import dev.ggnotes.overview.NoteVisibility
 import dev.ggnotes.overview.RemarkOverlay
 import dev.ggnotes.session.ColdAnchor
 import dev.ggnotes.session.DocIndex
@@ -220,10 +221,11 @@ class SessionNoteMarks(private val project: Project, private val session: SteerS
         return Lines.split(String(bytes, Charsets.UTF_8))
     }
 
-    /** EDT: remove and redraw every box of the file on all of its editors. */
+    /** EDT: remove and redraw every box of the file on all of its editors (none while its notes are hidden). */
     fun redraw(path: String) {
         val t = tracked[path] ?: return
         clearBoxes(t)
+        if (NoteVisibility.getInstance(project).isHidden(session.repo.root.path + "/" + path)) return
         val notes = synchronized(t) { t.notes.values.map { it.doc to Placement(it.live.start, it.live.end, it.live.outdated) } }
             .sortedWith(compareBy<Pair<SessionNoteDoc, Placement>> { it.second.start }.thenBy { it.first.id })
         if (notes.isEmpty()) return
@@ -239,6 +241,12 @@ class SessionNoteMarks(private val project: Project, private val session: SteerS
             }
         }
         t.boxes = list
+    }
+
+    /** EDT: Hide notes / Show notes flipped for the file at [key] (a working-tree path); redraw it when it is ours. */
+    fun visibilityChanged(key: String) {
+        val prefix = session.repo.root.path + "/"
+        if (key.startsWith(prefix)) redraw(key.removePrefix(prefix))
     }
 
     private fun clearBoxes(t: Tracked) {

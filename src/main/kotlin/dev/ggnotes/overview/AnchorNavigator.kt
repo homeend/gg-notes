@@ -50,14 +50,31 @@ object AnchorNavigator {
                     LOG.info("GgNotes: no text editor for ${file.path}")
                     return@invokeLater
                 }
-                select(editor, anchor)
+                select(editor, anchor, highlight = !NoteVisibility.getInstance(project).isHidden(file))
                 RemarkOverlay.apply(project, o, editor)
             }, project.disposed)
         }
     }
 
-    /** Caret on the first line, the whole range selected, scrolled to the middle. */
-    fun select(editor: Editor, anchor: RenderedAnchor) {
+    /**
+     * The banner's "Open current version": the working-tree file behind a revision tab opened
+     * from an overview, at 0-based [line] (the revision's caret line; the lines may have moved
+     * since the commit). False when [file] is no such tab or the path is gone from the tree.
+     */
+    fun openWorkingCopy(project: Project, file: VirtualFile, line: Int): Boolean {
+        val working = workingCopyOf(file) ?: return false
+        return FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, working, line.coerceAtLeast(0), 0), true) != null
+    }
+
+    /** The working-tree file of a revision tab opened from an overview, when the path is still in the tree. */
+    fun workingCopyOf(file: VirtualFile): VirtualFile? {
+        if (file.isInLocalFileSystem) return null
+        val ref = file.getUserData(OVERVIEW_FILE_KEY) ?: return null
+        return ref.root.findFileByRelativePath(ref.path)?.takeIf { !it.isDirectory }
+    }
+
+    /** Caret on the first line, the whole range selected (unless the file's notes are hidden), scrolled to the middle. */
+    fun select(editor: Editor, anchor: RenderedAnchor, highlight: Boolean = true) {
         val doc = editor.document
         val first = anchor.target.line ?: return
         val last = anchor.target.end ?: first
@@ -65,7 +82,7 @@ object AnchorNavigator {
         val start = doc.getLineStartOffset(first - 1)
         val end = doc.getLineEndOffset((last - 1).coerceAtMost(doc.lineCount - 1))
         editor.caretModel.moveToOffset(start)
-        editor.selectionModel.setSelection(start, end)
+        if (highlight) editor.selectionModel.setSelection(start, end) else editor.selectionModel.removeSelection()
         editor.scrollingModel.scrollToCaret(ScrollType.CENTER)
     }
 
