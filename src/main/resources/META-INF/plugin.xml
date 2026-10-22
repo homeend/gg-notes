@@ -23,6 +23,16 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.4.4</h3>
+        <ul>
+            <li>New: Hide notes / Show notes in the bar above a file opened from an overview. It
+                turns that file into a plain editor (no note or remark boxes, no line tint, no
+                anchor bar, no selection) and keeps it plain as you move between its anchors, in
+                its revision tab and its working copy alike. A file with hidden notes keeps a bar
+                to show them again after the overview is closed.</li>
+            <li>New: Open current version in that bar, on a file shown as it was at the
+                overview's commit: opens the working-tree file at the same line.</li>
+        </ul>
         <h3>0.4.3</h3>
         <ul>
             <li>Fixed: a note or remark box could be far taller than its text, with the text

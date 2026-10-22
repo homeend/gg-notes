@@ -1,5 +1,6 @@
 package dev.ggnotes.overview
 
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorCustomElementRenderer
 import com.intellij.openapi.editor.EditorFactory
@@ -37,6 +38,9 @@ object RemarkOverlay {
 
     private val APPLIED: Key<String> = Key.create("dev.ggnotes.overlayApplied")
 
+    /** The editor's own overlays (a child of the overview), so Hide notes can remove one editor's. */
+    private val DECOR: Key<Disposable> = Key.create("dev.ggnotes.overlayDecor")
+
     val REMARK_BG = JBColor(Color(0xFFF4D6), Color(0x3A3522))
     val REMARK_BORDER = JBColor(Color(0xD9B55A), Color(0x8A7A3C))
     val REMARK_TEXT = JBColor(Color(0x4A3F10), Color(0xE8DDA8))
@@ -57,15 +61,21 @@ object RemarkOverlay {
         }
     }
 
-    /** Overlay [editor] when its file was opened from [o]; idempotent per (editor, overview). */
+    /** Overlay [editor] when its file was opened from [o] and its notes are not hidden; idempotent per (editor, overview). */
     fun apply(project: Project, o: OpenOverview, editor: Editor) {
         val file = FileDocumentManager.getInstance().getFile(editor.document) ?: return
         val ref = file.getUserData(OVERVIEW_FILE_KEY) ?: return
         if (ref.overviewIdentity != o.overview.identity || ref.commit != o.overview.commit) return
+        if (NoteVisibility.getInstance(project).isHidden(file)) return
         val stamp = o.overview.identity + "@" + o.overview.commit
         if (editor.getUserData(APPLIED) == stamp) return
+        val decor = Disposer.newDisposable(o, "GgNotes overlay")
         editor.putUserData(APPLIED, stamp)
-        Disposer.register(o) { editor.putUserData(APPLIED, null) }
+        editor.putUserData(DECOR, decor)
+        Disposer.register(decor) {
+            editor.putUserData(APPLIED, null)
+            editor.putUserData(DECOR, null)
+        }
 
         val doc = editor.document
         val lineCount = doc.lineCount
@@ -80,7 +90,7 @@ object RemarkOverlay {
                 doc.getLineStartOffset(first - 1), doc.getLineEndOffset((last - 1).coerceAtMost(lineCount - 1)),
                 HighlighterLayer.SELECTION - 2, null, HighlighterTargetArea.LINES_IN_RANGE)
             h.lineMarkerRenderer = BandRenderer(anchor.index)
-            registerRemoval(o, h)
+            registerRemoval(decor, h)
         }
 
         val remarks = o.document?.files?.firstOrNull { it.path == ref.path }?.annotations ?: return
@@ -90,17 +100,22 @@ object RemarkOverlay {
             val end = doc.getLineEndOffset((remark.last - 1).coerceAtMost(lineCount - 1))
             val tint = TextAttributes().apply { backgroundColor = LINE_TINT }
             val h = markup.addRangeHighlighter(start, end, HighlighterLayer.SELECTION - 1, tint, HighlighterTargetArea.LINES_IN_RANGE)
-            registerRemoval(o, h)
+            registerRemoval(decor, h)
             val inlay: Inlay<*>? = editor.inlayModel.addBlockElement(
                 start, InlayProperties().showAbove(true).relatesToPrecedingText(false).priority(100),
                 RemarkBox(remark))
-            if (inlay != null) Disposer.register(o, inlay)
+            if (inlay != null) Disposer.register(decor, inlay)
             reflowOnResize(editor)
         }
     }
 
-    private fun registerRemoval(o: OpenOverview, h: RangeHighlighter) {
-        Disposer.register(o) { if (h.isValid) h.dispose() }
+    /** Remove the overlays [apply] drew on [editor] (Hide notes); the next [apply] draws them again. */
+    fun clear(editor: Editor) {
+        editor.getUserData(DECOR)?.let { Disposer.dispose(it) }
+    }
+
+    private fun registerRemoval(parent: Disposable, h: RangeHighlighter) {
+        Disposer.register(parent) { if (h.isValid) h.dispose() }
     }
 
     /** A thin bar in the gutter marking an anchor's lines (gg's `┃` band). */

@@ -231,6 +231,19 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         waitFor("one note box drawn at line 4") { gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).singleOrNull()?.let { gateEditor.document.getLineNumber(it.offset) } == 3 }
         assertEquals(listOf("n-gate" to dev.ggnotes.session.Placement(4, 4, false)), session.marks.placementsOn("internal/x/gate.go").map { it.first.id to it.second })
 
+        // Hide notes (the banner's toggle): the file's note boxes go and stay gone through a reload; Show draws them again
+        val gateFile = FileEditorManager.getInstance(project).selectedFiles.single()
+        val visibility = NoteVisibility.getInstance(project)
+        visibility.setHidden(gateFile, true)
+        assertTrue(visibility.isHidden(gateFile))
+        assertTrue("hidden: no note box", gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).isEmpty())
+        assertEquals("hidden: no line tint", 0, overlayHighlighters(gateEditor))
+        steer.reloadDocs()
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertTrue("a reload keeps it hidden", gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).isEmpty())
+        visibility.setHidden(gateFile, false)
+        waitFor("shown again: the box is back at line 4") { gateEditor.inlayModel.getBlockElementsInRange(0, gateEditor.document.textLength).singleOrNull()?.let { gateEditor.document.getLineNumber(it.offset) } == 3 }
+
         // `files`: the file counts its session notes; the overview is listed under its document id
         val withDocs = post("4-1", """{"id":"4-1","cmd":"files","wait":true}""").getAsJsonArray("files").map { it.asJsonObject }
         assertEquals(1, withDocs.single { it.get("id").asString == "f1" }.get("notes").asInt)
@@ -327,6 +340,13 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         assertEquals("the other note file is the only one left", listOf("n-other.toml"), Files.list(docs).use { it.map { f -> f.fileName.toString() }.toList() })
     }
 
+    /** The overview overlays' highlighters (line tint and anchor band) on [editor]. */
+    private fun overlayHighlighters(editor: com.intellij.openapi.editor.Editor): Int =
+        editor.markupModel.allHighlighters.count {
+            it.layer == com.intellij.openapi.editor.markup.HighlighterLayer.SELECTION - 1 ||
+                it.layer == com.intellij.openapi.editor.markup.HighlighterLayer.SELECTION - 2
+        }
+
     fun testOverviewIsListedOpenedAndItsAnchorOpensTheCommittedFile() {
         val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)
         assertNotNull("git4idea must know the temp repository", repo)
@@ -367,10 +387,48 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         assertEquals(1, open.currentAnchor)
         waitFor("remark inlay") { editor.inlayModel.getBlockElementsInRange(0, doc.textLength).isNotEmpty() }
         assertEquals(1, editor.inlayModel.getBlockElementsInRange(0, doc.textLength).size)
+        assertTrue("box, tint and band are drawn", overlayHighlighters(editor) > 0)
+
+        // 3b. Hide notes: this file turns plain (no box, tint, band or selection) and stays plain on its next anchor
+        val visibility = NoteVisibility.getInstance(project)
+        visibility.setHidden(file, true)
+        assertTrue(editor.inlayModel.getBlockElementsInRange(0, doc.textLength).isEmpty())
+        assertEquals(0, overlayHighlighters(editor))
+        assertFalse(editor.selectionModel.hasSelection())
 
         // 4. the second anchor (gate.go:2) keeps the same file; the third opens call.go, identical to the working tree
         service.nextAnchor()
         waitFor("anchor 2") { open.currentAnchor == 2 }
+        waitFor("anchor 2's line in gate.go") {
+            val e = FileEditorManager.getInstance(project).selectedTextEditor
+            e != null && e.document.text.contains("func gate") && e.caretModel.logicalPosition.line == 1
+        }
+        val gate2 = FileEditorManager.getInstance(project).selectedTextEditor!!
+        assertTrue("still hidden on the next anchor", gate2.inlayModel.getBlockElementsInRange(0, gate2.document.textLength).isEmpty())
+        assertEquals(0, overlayHighlighters(gate2))
+        // back on anchor 1 (lines 3–4): the caret goes there, but the hidden file gets no selection
+        service.goToAnchor(1)
+        waitFor("anchor 1's line") { FileEditorManager.getInstance(project).selectedTextEditor?.caretModel?.logicalPosition?.line == 2 }
+        assertFalse(FileEditorManager.getInstance(project).selectedTextEditor!!.selectionModel.hasSelection())
+        service.goToAnchor(2)
+        waitFor("anchor 2's line again") { FileEditorManager.getInstance(project).selectedTextEditor?.caretModel?.logicalPosition?.line == 1 }
+
+        // Open current version: the working gate.go at the caret's line, hidden too (same path)
+        val revision = FileEditorManager.getInstance(project).selectedFiles.single()
+        assertTrue(AnchorNavigator.openWorkingCopy(project, revision, 1))
+        val workingGate = FileEditorManager.getInstance(project).selectedFiles.single()
+        assertTrue(workingGate.isInLocalFileSystem)
+        assertEquals("gate.go", workingGate.name)
+        assertTrue(FileEditorManager.getInstance(project).selectedTextEditor!!.document.text.contains("edited after the commit"))
+        assertEquals(1, FileEditorManager.getInstance(project).selectedTextEditor!!.caretModel.logicalPosition.line)
+        assertTrue(visibility.isHidden(workingGate))
+
+        // Show notes: the revision's box is back
+        visibility.setHidden(revision, false)
+        assertFalse(visibility.isHidden(workingGate))
+        assertEquals(1, gate2.inlayModel.getBlockElementsInRange(0, gate2.document.textLength).size)
+        assertTrue(overlayHighlighters(gate2) > 0)
+        FileEditorManager.getInstance(project).closeFile(workingGate)
         service.nextAnchor()
         waitFor("call.go opened") { FileEditorManager.getInstance(project).selectedFiles.singleOrNull()?.name == "call.go" }
         assertTrue("identical to the working tree: the real file opens", FileEditorManager.getInstance(project).selectedFiles.single().isInLocalFileSystem)
