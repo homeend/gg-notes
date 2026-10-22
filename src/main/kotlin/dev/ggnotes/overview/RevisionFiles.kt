@@ -1,6 +1,7 @@
 package dev.ggnotes.overview
 
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.vcsUtil.VcsUtil
@@ -31,6 +32,20 @@ object RevisionFiles {
      */
     fun staged(project: Project, root: VirtualFile, path: String): VirtualFile? {
         val filePath = VcsUtil.getFilePath(root.path + "/" + path, false)
-        return project.getService(GitIndexFileSystemRefresher::class.java)?.getFile(root, filePath)
+        val refresher = project.getService(GitIndexFileSystemRefresher::class.java) ?: return null
+        return indexFile(refresher, root, filePath)
+    }
+
+    /**
+     * The refresher's find-or-create lookup, by name: `getFile` on 242–252, `createFile` from 253
+     * on (where `findFile` only finds a file already made). Linking either one directly is a
+     * NoSuchMethodError on the other side of the rename, so the plugin never names it in bytecode.
+     */
+    internal fun indexFile(refresher: Any, root: VirtualFile, filePath: FilePath): VirtualFile? {
+        for (name in listOf("getFile", "createFile")) {
+            val method = runCatching { refresher.javaClass.getMethod(name, VirtualFile::class.java, FilePath::class.java) }.getOrNull() ?: continue
+            return method.invoke(refresher, root, filePath) as VirtualFile?
+        }
+        return null
     }
 }

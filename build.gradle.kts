@@ -14,7 +14,7 @@ group = "dev.ggnotes"
 val gitShortSha = providers.exec {
     commandLine("git", "rev-parse", "--short", "HEAD")
 }.standardOutput.asText.map { it.trim() }
-version = "0.4.4+" + runCatching { gitShortSha.get().ifEmpty { "dev" } }.getOrDefault("dev")
+version = "0.4.5+" + runCatching { gitShortSha.get().ifEmpty { "dev" } }.getOrDefault("dev")
 
 repositories {
     mavenCentral()
@@ -99,6 +99,14 @@ intellijPlatform {
             }
         }
     }
+}
+
+// The plugin's own version for code that reports it (PluginVersion): the IDE's
+// lookups of a plugin by id or class are internal API from 2026.2.
+tasks.processResources {
+    val stamped = project.version.toString()
+    inputs.property("version", stamped)
+    filesMatching("dev/ggnotes/version.properties") { expand("version" to stamped) }
 }
 
 // Acceptance runs (AGENTS.md §3.2): `./gradlew runIde --args=/path/to/checkout`

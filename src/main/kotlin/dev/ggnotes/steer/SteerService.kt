@@ -1,14 +1,13 @@
 package dev.ggnotes.steer
 
-import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.AppExecutorUtil
+import dev.ggnotes.PluginVersion
 import dev.ggnotes.git.GitAccess
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
@@ -145,7 +144,7 @@ class SteerService(private val project: Project) : Disposable {
             worktree = top,
             started = Instant.now(),
             ide = ApplicationInfo.getInstance().fullApplicationName,
-            plugin = PluginManagerCore.getPlugin(PluginId.getId("dev.ggnotes"))?.version ?: "dev",
+            plugin = PluginVersion.current,
         )
         Presence.write(inbox, json)
         val session = RootSession(repo, top, inbox, json, SessionMemory(top))
