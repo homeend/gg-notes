@@ -182,6 +182,8 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         val open = service.open
         val zone = ZoneId.systemDefault()
         val view = service.view
+        // the selected row survives the rebuild (a session-doc write rebuilds; Delete acts on the selected row)
+        val kept = selectedNode?.userObject as? ItemNode
         root.removeAllChildren()
         val messages = ArrayList<String>()
         val multi = snapshot.repos.size > 1
@@ -197,7 +199,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
                 val node = DefaultMutableTreeNode(ItemNode(
                     item, repo.repo, s, repo.branchTips,
                     treeChanged = (p as? Payload.StoreReview)?.let { repo.treeChanged[it.review.id] }.orEmpty(),
-                    subject = item.owner.commit?.let { c -> repo.model.commits.firstOrNull { it.commit == c }?.subject },
+                    subject = item.owner.commit?.let { repo.subjects[it] },
                     unresolved = if (p is Payload.SessionOverview && s != null) steer.unresolved(s, p.entry.doc) else emptyList(),
                 ))
                 val replies = when (p) {
@@ -230,7 +232,8 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         status.isVisible = messages.isNotEmpty()
         model.reload()
         TreeUtil.expandAll(tree)
-        if (open != null) selectShowing(open)
+        val again = kept?.let { k -> TreeUtil.findNode(root) { n -> (n.userObject as? ItemNode)?.let { it.repo == k.repo && it.item.id == k.item.id } == true } }
+        if (again != null) selectSilently(again) else if (open != null) selectShowing(open)
         fitTree()
     }
 
@@ -279,9 +282,14 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     /** Select the row of the open document without opening it again. */
     private fun selectShowing(open: OpenOverview) {
         val match = TreeUtil.findNode(root) { n -> (n.userObject as? ItemNode)?.let { it.repo == open.repo && shows(it, open.overview) } == true } ?: return
+        selectSilently(match)
+    }
+
+    /** Select [node] (null: clear the selection) without the selection listener opening anything. */
+    private fun selectSilently(node: DefaultMutableTreeNode?) {
         syncing = true
         try {
-            TreeUtil.selectNode(tree, match)
+            if (node != null) TreeUtil.selectNode(tree, node) else tree.clearSelection()
         } finally {
             syncing = false
         }
@@ -421,12 +429,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         } else {
             // Close leaves no row selected: a selected row stays "shown" to the tree, so a click on
             // it would fire no selection change and the document could not be reopened from it
-            syncing = true
-            try {
-                tree.clearSelection()
-            } finally {
-                syncing = false
-            }
+            selectSilently(null)
             // "document only" with no document would show only the placeholder: bring the list back
             if (service.listHidden) service.setListHidden(false)
         }

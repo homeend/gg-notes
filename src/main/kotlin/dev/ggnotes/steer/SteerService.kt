@@ -160,7 +160,7 @@ class SteerService(private val project: Project) : Disposable {
 
     // ---- session documents as the tool window sees them ----------------------------------
 
-    /** One row of the tool window's session group: an overview file, whether it is on screen, and its unresolved anchors. */
+    /** One session overview of a root: its file, whether it is on screen, and its unresolved anchors. */
     class SessionRow(val session: RootSession, val entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionOverviewDoc>, val shown: Boolean, val unresolved: List<String>)
 
     private val sessionListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
@@ -280,8 +280,10 @@ class SteerService(private val project: Project) : Disposable {
     /** EDT (the tree's row click): open the note's working file with its lines, where they sit now, selected; focus stays in the tree (its Delete and Ctrl+C are the row's). */
     fun showNote(s: RootSession, entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionNoteDoc>) {
         val doc = entry.doc
-        val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(Path.of(s.topLevel, doc.path))
-            ?.takeIf { !it.isDirectory } ?: return
+        // the VFS already knows a worktree file: refresh (file work on the EDT) only when it does not
+        val nio = Path.of(s.topLevel, doc.path)
+        val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+        val vf = (lfs.findFileByNioFile(nio) ?: lfs.refreshAndFindFileByNioFile(nio))?.takeIf { !it.isDirectory } ?: return
         val p = s.marks.placementOf(doc)
         val editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
             .openTextEditor(com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, (p.start - 1).coerceAtLeast(0), 0), false) ?: return

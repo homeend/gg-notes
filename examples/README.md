@@ -82,7 +82,11 @@ these lines.
 
 ## `items/` — the item-model fixture
 
-A store (`commits.toml`, `previews.toml`, `worktrees/`) for the tool window's item views: By Date / By Type, and notes nested under their review or overview.
+A store (`commits.toml`, `previews.toml`, `worktrees/`) for the tool
+window's item views: By Date / By Type, and notes nested under their
+review or overview. Two reviews of PR 7 (`0r000004`, `0r000005`, one per
+push) share the scoped notes `0n000008` and `0n000009`: each note sits
+under the newest review only.
 
 ## Link forms you must handle (spec §6–§7)
 

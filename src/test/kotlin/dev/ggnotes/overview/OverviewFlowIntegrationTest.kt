@@ -883,6 +883,48 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         }
     }
 
+    /**
+     * A rebuild keeps the selected row: a session-doc write rebuilds the tree, and a selected
+     * session note must not lose its row or jump to the open document's row (Delete acts on it).
+     */
+    fun testASelectedSessionNoteRowStaysSelectedAcrossARebuild() {
+        val steer = dev.ggnotes.steer.SteerService.getInstance(project)
+        val session = ApplicationManager.getApplication().executeOnPooledThread<List<dev.ggnotes.steer.SteerService.RootSession>> { steer.startSync() }.get().single()
+        Files.createDirectories(session.docsDir)
+        Files.writeString(session.docsDir.resolve("n-1.toml"), "path = 'internal/x/gate.go'\nstart = 4\nend = 4\nsummary = 'Returns the flag.'\nlines = ['\treturn open']\n")
+        steer.reloadDocs()
+        waitFor("the note is indexed") { session.docs.index.notes().size == 1 }
+        withPanel { panel, snapshot ->
+            val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)!!
+            val service = OverviewService.getInstance(project)
+            waitFor("the note's row") { "Returns the flag." in panel.rowTexts(1) }
+            assertTrue(panel.selectItem("note:n-1"))
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            steer.sessionChanged()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("no document open: the note row stays selected", "note:n-1", panel.selectedItemId)
+
+            // with a document open, the rebuild must not move the selection to the document's row
+            service.open(snapshot.repos.single().model.commits.single { it.commit == sha }.overviews.single { it.id == "7cf0812f" }, repo)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("store:7cf0812f", panel.selectedItemId)
+            assertTrue(panel.selectItem("note:n-1"))
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("7cf0812f", service.open?.overview?.id)
+            steer.sessionChanged()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("a document open: the note row stays selected", "note:n-1", panel.selectedItemId)
+            assertEquals("the rebuild re-opens nothing", "7cf0812f", service.open?.overview?.id)
+
+            // the selected row gone: the open document's row is selected
+            Files.delete(session.docsDir.resolve("n-1.toml"))
+            steer.reloadDocs()
+            waitFor("the note row is gone") { session.docs.index.notes().isEmpty() }
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            waitFor("the open document's row is selected") { panel.selectedItemId == "store:7cf0812f" }
+        }
+    }
+
     /** The View selector: By Date is the default, a pick is remembered in the project's properties. */
     fun testViewSelectorDefaultsToDateAndIsRemembered() {
         val service = OverviewService.getInstance(project)

@@ -39,3 +39,89 @@ Commit = '3333333333333333333333333333333333333333'
 ShelfID = ''
 Path = ''
 State = 0
+
+[[notes]]
+id = '0r000004'
+source = 'agent'
+author = 'ada'
+side = 'new'
+range = [0, 0]
+context_hash = ''
+summary = 'PR 7 review'
+rationale = 'PR 7 review, first push.'
+tags = ['review']
+scope = '3333333333333333333333333333333333333333..4444444444444444444444444444444444444444'
+preview = 'main...refs/gg/pr/7'
+created = 2026-10-11T08:00:00Z
+updated = 2026-10-11T08:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '4444444444444444444444444444444444444444'
+ShelfID = ''
+Path = ''
+State = 0
+
+[[notes]]
+id = '0r000005'
+source = 'agent'
+author = 'ada'
+side = 'new'
+range = [0, 0]
+context_hash = ''
+summary = 'PR 7 re-review'
+rationale = 'PR 7 review, after a push.'
+tags = ['review']
+scope = '3333333333333333333333333333333333333333..5555555555555555555555555555555555555555'
+preview = 'main...refs/gg/pr/7'
+created = 2026-10-12T08:00:00Z
+updated = 2026-10-12T08:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '5555555555555555555555555555555555555555'
+ShelfID = ''
+Path = ''
+State = 0
+
+[[notes]]
+id = '0n000008'
+source = 'user'
+author = 'me'
+side = 'new'
+range = [2, 2]
+context_hash = ''
+summary = 'scoped q2'
+preview = 'main...refs/gg/pr/7'
+created = 2026-10-11T09:00:00Z
+updated = 2026-10-11T09:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '4444444444444444444444444444444444444444'
+ShelfID = ''
+Path = 'q.go'
+State = 0
+
+[[notes]]
+id = '0n000009'
+source = 'user'
+author = 'me'
+side = 'new'
+range = [9, 9]
+context_hash = ''
+summary = 'scoped p9'
+preview = 'main...refs/gg/pr/7'
+created = 2026-10-11T09:10:00Z
+updated = 2026-10-11T09:10:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '4444444444444444444444444444444444444444'
+ShelfID = ''
+Path = 'p.go'
+State = 0

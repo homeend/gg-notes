@@ -61,6 +61,8 @@ class RepoOverviews(
     val treeChanged: Map<String, List<String>> = emptyMap(),
     /** The current tip of every branch an overview or review names (null = the branch is gone): gg's on-branch vs was-tip. */
     val branchTips: Map<String, String?> = emptyMap(),
+    /** The subject of every commit a record names (null = not in the repository), looked up on refresh. */
+    val subjects: Map<String, String?> = emptyMap(),
 )
 
 /** What the tool window shows: every repository of the project. */
@@ -217,7 +219,7 @@ class OverviewService(private val project: Project) : Disposable {
                 }
                 val tips = HashMap<String, String?>()
                 for (b in branches) tips[b] = GitAccess.revParse(project, repo.root, b)
-                RepoOverviews(repo, dir, contents, head, model, null, changed, tips)
+                RepoOverviews(repo, dir, contents, head, model, null, changed, tips, subjectMap)
             }
         }
         signature = sig

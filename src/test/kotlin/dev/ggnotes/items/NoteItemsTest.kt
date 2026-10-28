@@ -75,9 +75,11 @@ class NoteItemsTest {
         assertEquals(ItemKind.COMMIT, kinds["store:0r000003"])
         assertEquals(ItemKind.BRANCH, kinds["store:0r000002"])
         assertEquals(ItemKind.PULL_REQUEST, kinds["store:0v000002"])
+        assertEquals(ItemKind.PULL_REQUEST, kinds["store:0r000004"])
+        assertEquals(ItemKind.PULL_REQUEST, kinds["store:0r000005"])
         assertEquals(ItemKind.OTHER, kinds["store:0w000001"])
         val threads = items().filter { it.source == ItemSource.STORE_THREAD }
-        assertEquals(8, threads.size)
+        assertEquals(10, threads.size)
         assertTrue(threads.all { it.kind == ItemKind.FILE })
     }
 
@@ -234,6 +236,22 @@ class NoteItemsTest {
     }
 
     @Test
+    fun `a scoped note two reviews of one PR share sits under the newest review only`() {
+        val model = itemsModel()
+        val reviews = model.commits.flatMap { it.reviews }
+        assertEquals("both reviews of PR 7 carry the scoped notes", 2, reviews.count { r -> r.scopedThreads.any { it.root.id == "0n000008" } })
+        val all = tops(model)
+        assertEquals(listOf("store:0n000009", "store:0n000008"), childIds("store:0r000005", all))
+        assertTrue(childIds("store:0r000004", all).isEmpty())
+    }
+
+    @Test
+    fun `children are ordered by path, then first line, then id`() {
+        // StoreModel orders scoped threads by line (q.go:2 before p.go:9): the item keeps path order
+        assertEquals(listOf("store:0n000009", "store:0n000008"), childIds("store:0r000005"))
+    }
+
+    @Test
     fun `every thread and session note appears exactly once`() {
         val model = itemsModel()
         val n1 = "20261018T143202-1b2c"
@@ -244,7 +262,8 @@ class NoteItemsTest {
         val expected = (
             model.commits.flatMap { c -> c.files.flatMap { f -> f.threads } + c.reviews.flatMap { it.scopedThreads } } +
                 model.working.flatMap { w -> w.files.flatMap { f -> f.threads } + w.reviews.flatMap { it.scopedThreads } }
-            ).map { "store:" + it.root.id }
+            ).map { "store:" + it.root.id }.distinct()
+        assertTrue("the fixture has a scoped note two reviews share", "store:0n000008" in expected)
         assertEquals(expected.sorted(), flatAll.filter { it.source == ItemSource.STORE_THREAD }.map { it.id }.sorted())
         assertEquals(listOf("note:$n1", "note:20261018T143203-2c3d").sorted(), got.filter { it.startsWith("note:") }.sorted())
         assertEquals(got.size, got.toSet().size)

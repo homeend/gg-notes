@@ -44,6 +44,13 @@ object NoteItems {
                 place(threadItem(t, "", w.worktree), f.path, reviews, lists, emptyList(), emptyMap(), tops, ::adopt)
             }
         }
+        // gg attaches a scoped note to every review of its PR (or preview): a re-review after a push
+        // shares them. The item model gives each ONE parent, the newest review.
+        val scopedParent = HashMap<String, NoteItem>()
+        for (r in tops) for (c in r.children) {
+            val cur = scopedParent[c.id]
+            if (cur == null || NEWEST_ITEM.compare(r, cur) < 0) scopedParent[c.id] = r
+        }
         val notesLinked = HashMap<String, DocIndex.Entry<SessionOverviewDoc>>()
         for (e in sessionOverviews.sortedWith(NEWEST_SESSION)) for (n in e.doc.anchors.mapNotNull { it.note }) notesLinked.putIfAbsent(n, e)
         for (e in sessionOverviews) tops += NoteItem(
@@ -60,8 +67,8 @@ object NoteItems {
             if (parent != null) adopt(parent.doc.id, item) else tops += item
         }
         return tops.map { t ->
-            val extra = adopted[t.id].orEmpty()
-            if (extra.isEmpty()) t else t.copy(children = (t.children + extra).sortedWith(CHILD_ORDER))
+            val own = t.children.filter { scopedParent[it.id]?.id == t.id }
+            t.copy(children = (own + adopted[t.id].orEmpty()).sortedWith(CHILD_ORDER))
         }
     }
 
