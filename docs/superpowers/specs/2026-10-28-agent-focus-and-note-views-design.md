@@ -191,11 +191,15 @@ file's mtime; shown and grouped in the IDE's local time zone.
 
 ### 4.4 Focus anything shown (steer, `PLUGIN.md`)
 
-- `files` reply: after the open files and session overviews (today), one
-  entry per **top item and child** of §4.3: `{id, source, kind, title,
-  author, created, owner, state}`, where `id` is the item id and `source` is
-  `session-overview` | `session-note` | `store-overview` | `store-review` |
-  `store-thread`.
+- `files` reply: after the open files and session overviews (today's rows,
+  unchanged — gg as shipped reads them), one entry per other **top item and
+  child** of §4.3: `{id, source, kind, title, author, created, owner,
+  state}`, `source` = `session-note` | `store-overview` | `store-review` |
+  `store-thread`, `kind` = `commit` | `branch` | `pull-request` | `file` |
+  `other`, `owner` = `{commit?, branch?, preview?, path?}`. The exact shape
+  is gigagit's owner addendum §4
+  (`docs/superpowers/specs/2026-10-28-session-docs-owner-design.md`, branch
+  `spec/session-docs-owner`).
 - Ids: session overview = its file id (unchanged); session note =
   `note:<id>` (the anchor grammar); store = `store:<record id>`.
 - `file_focus` with such an id: open it in the viewer (an overview/review in
