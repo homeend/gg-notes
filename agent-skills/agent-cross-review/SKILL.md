@@ -70,10 +70,13 @@ reviewer the same rule.
    overview, `title = "Cross-review: <what was reviewed>"`, `author =
    "<you> — cross-review (<model1>, <model2>[, <model3>])"`. A walkthrough
    only when the user asked for one (agent-review step 5), written by YOU.
-7. **Check** (FILES.md §7), then **show it** (FILES.md §6, optional).
+7. **Check** (FILES.md §7), then **show it** (FILES.md §6, optional). On the
+   store route, the check is gg's output (`--dry-run`, refusals; FILES.md
+   §9) and there is no §6 step: say where the record shows.
 8. **Reply** with the verdict first, each reviewer and its verdict, how
    many findings were agreed, how many disputed and how you ruled, the
-   review's id and the directory. Do not paste the review into the chat.
+   review's id and the directory (store route: the record id and where it
+   shows in the tool window, FILES.md §9). Do not paste the review into the chat.
 
 ## Merging
 

@@ -14,7 +14,8 @@ note beside it. Present the result this way instead of a long chat answer.
 
 You write plain files; the IDE plugin shows them. **How to write them is in
 [FILES.md](FILES.md) beside this skill — read it first.** It also says what
-an anchor can point at: only files as they are on disk in this worktree.
+an anchor can point at: on the files route, only files as they are on disk
+in this worktree.
 
 **First run FILES.md §0:** inside gg → stop and use the gg skills; outside gg,
 never ask the user to start gg or to set anything.
@@ -25,7 +26,7 @@ sentences, active voice, one meaning per word, no idioms. Code, paths,
 commands and identifiers stay exactly as they are.
 
 **The user says only WHAT to present.** Find out the rest yourself: the
-worktree, the directory, what changed. Never ask the user for a path or a
+worktree, the directory (files route), what changed. Never ask the user for a path or a
 flag that you can compute.
 
 ## Read before you write
@@ -114,8 +115,12 @@ link make it plain text (FILES.md §5). ≤ 64 KiB, ≤ 100 anchors.
 
 0. **Route** (FILES.md §0). An overview of a commit, with usable gg:
    store it with FILES.md §9 `overview save`. The anchors are lines at the
-   commit. Steps 2–4 and 6 are then FILES.md §9. A walk through uncommitted
-   work or the working tree: steps 1–7 below, as written.
+   commit. Steps 2–4 are then FILES.md §9. Step 5: check each anchor against the
+   file AT the commit (gg's `unresolved:` and refusal output is the check).
+   Step 6 does not apply: say where the record shows (FILES.md §9
+   "Result"). Step 7: reply with the record id and where it shows, not the
+   directory. A walk through uncommitted work or the working tree: steps
+   1–7 below, as written.
 1. **Finish first.** Make every edit before you write a single note.
 2. **Find the directory** (FILES.md §2) for the worktree the IDE shows.
 3. **Notes on the lines.** One note file per remark, on the exact lines it

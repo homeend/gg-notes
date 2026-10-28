@@ -14,8 +14,9 @@ findings.
 
 **How to write the files is in the agent-overview skill's FILES.md
 (`../agent-overview/FILES.md`, installed beside this skill) — read it first.**
-It also says the rule that shapes every review here: a note and an anchor
-point at files AS THEY ARE ON DISK in the worktree the IDE shows.
+It also says the rule that shapes a review on the files route: a note and an
+anchor point at files AS THEY ARE ON DISK in the worktree the IDE shows. On
+the store route (FILES.md §9) the lines are the file at the reviewed commit.
 
 **First run FILES.md §0:** inside gg → stop and use the gg skills; outside gg,
 never ask the user to start gg or to set anything.
@@ -62,7 +63,7 @@ commands and identifiers stay exactly as they are.
 3. **The remarks** — on the store route they are part of the one gg review
    document (FILES.md §9). On the files route: one note file each
    (FILES.md §4), on the lines of the file as it is now. Annotate what a reader would not spot; never a
-   remark per hunk. A removed line has no place on disk: put that finding
+   remark per hunk. A removed line has no place in the new file: put that finding
    on the nearest new line that replaced it, or only in the summary.
    Every note carries `[[meta]]`:
    - `kind` — `issue` (wrong now), `suggestion` (fine now, could be
@@ -95,9 +96,11 @@ commands and identifiers stay exactly as they are.
 
    Write each link bare — backticks around a link make it plain text.
 5. **A walkthrough (only when asked).** When the user says "overview",
-   "tour" or "walk me through", add a second overview file, written by
+   "tour" or "walk me through", add a walkthrough, written by
    the agent-overview skill's "What the overview says" (its sections, scaled
-   to the change). The review stays the judgement; the walkthrough only
+   to the change). Files route: a second overview file. Store route: the
+   walkthrough goes in the review document's "overview" key, as the file
+   that `"$GG" skill path review` prints describes. The review stays the judgement; the walkthrough only
    explains. Otherwise write no walkthrough.
 6. **Check** (FILES.md §7), then **show it** (FILES.md §6, optional).
    On the store route, check with `review save --dry-run` and the refusals
