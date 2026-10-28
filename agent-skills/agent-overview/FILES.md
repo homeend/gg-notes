@@ -1,11 +1,14 @@
 # Files — how an agent skill writes notes and overviews
 
 The IDE's AgentNotes plugin watches one directory per worktree. Every
-file you put there shows up in the IDE: an **overview** (`<id>.md`) as a row
-of the Agent Notes tool window's "Session" group, a **note** (`<id>.toml`) as a
-read-only remark box beside its lines in the editor. Nothing else is needed:
-no server, no command, no running process of yours. A file stays until the
-user deletes it in the IDE (tree context menu → Delete) or you remove it.
+file you put there shows up in the IDE. An **overview** (`<id>.md`) is a row
+of kind Other in the Agent Notes tool window. A **note** (`<id>.toml`) is a
+row of kind File, and a read-only remark box beside its lines in the editor.
+A note that an overview links (`note:<id>`) is under the row of that
+overview. In the By Date view, the rows are under today's date. Nothing
+else is needed: no server, no command, no running process of yours. A file
+stays until the user deletes it in the IDE (tree context menu → Delete) or
+you remove it.
 
 The directory files need no tool. The store route (§9) needs a usable `gg`
 (§0), never a running gg. §0 tells you which route to take.
@@ -234,8 +237,8 @@ mv "$inbox/ide/.$cid.tmp" "$inbox/ide/cmd-$cid.json"
 
 Then read `$inbox/ide/reply-$cid.json` for at most 2 seconds
 (`{"ok":true,"detail":"focused overview <id> \"<title>\""}`). No reply, or
-no fresh `ide.json`: say in one line that the overview is in the Agent Notes tool window's
-"Session" group, and go on. Never wait longer, never retry.
+no fresh `ide.json`: say in one line that the overview is in the Agent Notes tool window,
+under today's date, and go on. Never wait longer, never retry.
 
 ## 7. Check before you report
 
@@ -248,8 +251,8 @@ no fresh `ide.json`: say in one line that the overview is in the Agent Notes too
 
 ## 8. A link the user pastes
 
-In the IDE, **Copy Link** on a row of the "Session" group (or Ctrl+C on
-the row) and **Copy Session Note Link** on a note box (editor context
+In the IDE, **Copy Link** on a session overview row or a session note row
+of the Agent Notes tool window (or Ctrl+C on the row) and **Copy Session Note Link** on a note box (editor context
 menu, caret on the note) copy ONE line:
 
 ```

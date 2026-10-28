@@ -160,7 +160,7 @@ class SteerService(private val project: Project) : Disposable {
 
     // ---- session documents as the tool window sees them ----------------------------------
 
-    /** One row of the tool window's session group: an overview file, whether it is on screen, and its unresolved anchors. */
+    /** One session overview of a root: its file, whether it is on screen, and its unresolved anchors. */
     class SessionRow(val session: RootSession, val entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionOverviewDoc>, val shown: Boolean, val unresolved: List<String>)
 
     private val sessionListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
@@ -275,6 +275,23 @@ class SteerService(private val project: Project) : Disposable {
             if (raise) com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(dev.ggnotes.overview.OverviewService.TOOL_WINDOW_ID)?.show()
         }
         sessionChanged()
+    }
+
+    /** EDT (the tree's row click): open the note's working file with its lines, where they sit now, selected; focus stays in the tree (its Delete and Ctrl+C are the row's). */
+    fun showNote(s: RootSession, entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionNoteDoc>) {
+        val doc = entry.doc
+        // the VFS already knows a worktree file: refresh (file work on the EDT) only when it does not
+        val nio = Path.of(s.topLevel, doc.path)
+        val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+        val vf = (lfs.findFileByNioFile(nio) ?: lfs.refreshAndFindFileByNioFile(nio))?.takeIf { !it.isDirectory } ?: return
+        val p = s.marks.placementOf(doc)
+        val editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+            .openTextEditor(com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, (p.start - 1).coerceAtLeast(0), 0), false) ?: return
+        val text = editor.document
+        if (text.lineCount == 0) return
+        val first = p.start.coerceIn(1, text.lineCount)
+        val last = p.end.coerceIn(first, text.lineCount)
+        editor.selectionModel.setSelection(text.getLineStartOffset(first - 1), text.getLineEndOffset(last - 1))
     }
 
     /** Delete (the tree's row action): unlink the overview's file; the reconcile that follows drops the row and closes its document. */

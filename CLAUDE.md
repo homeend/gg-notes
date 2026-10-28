@@ -34,7 +34,12 @@ name freeze on the first Marketplace upload.
   `StoreModel` (commits → overviews / reviews / files → threads; working
   entries per worktree), `ReviewComposer` / `NoteComposer` (a review or a
   file's threads as the document the viewer shows), `MarkdownRenderer`,
-  `LinkClassifier`. `dev.ggnotes.git` wraps git4idea; `dev.ggnotes.overview`
+  `LinkClassifier`. `dev.ggnotes.items` is pure too: `NoteItems` (top items
+  from the RepoModel and the session docs, each contained note a child of
+  ONE parent), `ItemViews` (By Date / By Type, owner labels; the view is
+  remembered per project in the property `ggnotes.view`) and
+  `SessionRemoval`; `RemovalPlan.forItem` deletes an item's children first.
+  `dev.ggnotes.git` wraps git4idea; `dev.ggnotes.overview`
   is the service, tool window, document pane, navigation, overlays, banner.
 - One viewer for everything: a review and a note thread are turned into an
   `OverviewDocument` (markdown + per-file boxes) and opened through the
@@ -82,7 +87,7 @@ name freeze on the first Marketplace upload.
   table-tested against gg's conformance files. IDE: `SteerService` reloads
   every root's `DocFolder` every 2 s and on a watcher wake (the inbox is
   watched so a `docs/` a writer creates is seen); `sessionOverviews(root)`
-  feeds the tool window's "Session" group, `viewerOverview` opens a file as
+  and the session notes feed the item views, `viewerOverview` opens a file as
   a live document (`viewKind = session:<top>\0<id>:`), a replaced open
   overview is re-rendered on the same anchor, a removed one closes;
   `SessionNoteMarks` draws note boxes on every editor of a noted file (cold

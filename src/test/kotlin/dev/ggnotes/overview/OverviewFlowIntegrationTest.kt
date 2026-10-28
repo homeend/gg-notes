@@ -766,6 +766,193 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         }
     }
 
+    /** A panel on the refreshed fixture store; [block] runs with it, the panel is disposed and the view reset afterwards. */
+    private fun withPanel(block: (OverviewToolWindowPanel, Snapshot) -> Unit) {
+        val service = OverviewService.getInstance(project)
+        val previous = service.ui
+        val panel = OverviewToolWindowPanel(project)
+        try {
+            val snapshot = ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { service.refreshSync() }.get()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            block(panel, snapshot)
+        } finally {
+            service.view = NoteView.DATE
+            com.intellij.ide.util.PropertiesComponent.getInstance(project).unsetValue(OverviewService.VIEW_PROPERTY)
+            service.setListHidden(false)
+            service.close()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            com.intellij.openapi.util.Disposer.dispose(panel)
+            service.ui = previous
+        }
+    }
+
+    private fun assertDays(rows: List<String>) {
+        assertFalse("there are day rows", rows.isEmpty())
+        val days = rows.map { if (it == "No date") null else java.time.LocalDate.parse(it) }
+        val dated = days.takeWhile { it != null }.map { it!! }
+        assertEquals("the undated group comes last, at most once", days.size - dated.size, days.count { it == null })
+        assertTrue("at most one undated group", days.count { it == null } <= 1)
+        assertEquals("newest day first", dated.sortedDescending(), dated)
+    }
+
+    /** By Date (the default): the top rows are the days, newest first; the items are under them. */
+    fun testDateViewListsDaysThenItems() = withPanel { panel, _ ->
+        assertEquals(NoteView.DATE, OverviewService.getInstance(project).view)
+        assertDays(panel.rowTexts(0))
+        assertTrue(panel.rowTexts(1).toString(), "How the gate works" in panel.rowTexts(1))
+    }
+
+    /** By Type: the top rows are the kinds in their fixed order, the days under them. */
+    fun testTypeViewListsKindsThenDays() = withPanel { panel, _ ->
+        OverviewService.getInstance(project).view = NoteView.TYPE
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        val kinds = panel.rowTexts(0)
+        val order = listOf("Branch", "Commit", "Pull request", "File", "Other")
+        assertTrue(kinds.toString(), "Commit" in kinds)
+        assertTrue("$kinds in the fixed order", kinds.all { it in order } && kinds == order.filter { it in kinds } && kinds.distinct() == kinds)
+        assertDays(panel.rowTexts(1))
+        assertTrue(panel.rowTexts(2).toString(), "How the gate works" in panel.rowTexts(2))
+    }
+
+    /** The open document's item stays selected across a refresh and a view switch; a thread opened by its notes is its item. */
+    fun testOpenDocumentStaysSelectedAcrossRefreshAndViewSwitch() = withPanel { panel, snapshot ->
+        val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)!!
+        val service = OverviewService.getInstance(project)
+        val commit = snapshot.repos.single().model.commits.single { it.commit == sha }
+        service.open(commit.overviews.single { it.id == "7cf0812f" }, repo)
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertEquals("store:7cf0812f", panel.selectedItemId)
+
+        ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { service.refreshSync() }.get()
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertEquals("a refresh keeps it selected", "store:7cf0812f", panel.selectedItemId)
+
+        service.view = NoteView.TYPE
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertEquals("the view switch keeps it selected", "store:7cf0812f", panel.selectedItemId)
+
+        val thread = commit.files.single { it.path == "internal/x/gate.go" }.threads.single { it.root.id == "aa110001" }
+        service.openNotes(listOf(thread), thread.root.address.path, sha, null, repo)
+        waitFor("the thread opened") { service.open?.overview?.viewKind == "notes:aa110001:" }
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertEquals("store:aa110001", panel.selectedItemId)
+    }
+
+    /** A store item on a commit of the repository offers "Remove Everything on This Commit" in the tree's menu. */
+    fun testRemoveEverythingOnThisCommitIsOfferedOnACommitItem() = withPanel { panel, snapshot ->
+        val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)!!
+        val service = OverviewService.getInstance(project)
+        service.open(snapshot.repos.single().model.commits.single { it.commit == sha }.overviews.single { it.id == "7cf0812f" }, repo)
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertEquals("store:7cf0812f", panel.selectedItemId)
+        val context = com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project)
+        val offered = panel.popupActions.filter { a ->
+            val e = com.intellij.testFramework.TestActionEvent.createTestEvent(a, context)
+            a.update(e)
+            e.presentation.isEnabledAndVisible && e.presentation.text == "Remove Everything on This Commit"
+        }
+        assertEquals(1, offered.size)
+    }
+
+    /**
+     * A session note row opens the working file with the note's lines selected, without taking the
+     * row's place: no document opens and the list stays (a note opens an editor, not a document).
+     */
+    fun testSelectingASessionNoteRowOpensItsLinesInTheWorkingFile() {
+        val steer = dev.ggnotes.steer.SteerService.getInstance(project)
+        val session = ApplicationManager.getApplication().executeOnPooledThread<List<dev.ggnotes.steer.SteerService.RootSession>> { steer.startSync() }.get().single()
+        Files.createDirectories(session.docsDir)
+        Files.writeString(session.docsDir.resolve("n-1.toml"), "path = 'internal/x/gate.go'\nstart = 4\nend = 4\nsummary = 'Returns the flag.'\nlines = ['\treturn open']\n")
+        steer.reloadDocs()
+        waitFor("the note is indexed") { session.docs.index.notes().size == 1 }
+        withPanel { panel, _ ->
+            waitFor("the note's row") { "Returns the flag." in panel.rowTexts(1) }
+            assertTrue(panel.selectItem("note:n-1"))
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("note:n-1", panel.selectedItemId)
+            val fem = FileEditorManager.getInstance(project)
+            assertEquals("gate.go", fem.selectedFiles.single().name)
+            assertTrue("the working file, not a revision", fem.selectedFiles.single().isInLocalFileSystem)
+            val editor = fem.selectedTextEditor!!
+            val doc = editor.document
+            assertEquals(doc.getLineStartOffset(3), editor.selectionModel.selectionStart)
+            assertEquals(doc.getLineEndOffset(3), editor.selectionModel.selectionEnd)
+            assertNull("a note opens no document", OverviewService.getInstance(project).open)
+            panel.openSelectedFullArea()
+            assertFalse("a note row does not hide the list", OverviewService.getInstance(project).listHidden)
+        }
+    }
+
+    /**
+     * A rebuild keeps the selected row: a session-doc write rebuilds the tree, and a selected
+     * session note must not lose its row or jump to the open document's row (Delete acts on it).
+     */
+    fun testASelectedSessionNoteRowStaysSelectedAcrossARebuild() {
+        val steer = dev.ggnotes.steer.SteerService.getInstance(project)
+        val session = ApplicationManager.getApplication().executeOnPooledThread<List<dev.ggnotes.steer.SteerService.RootSession>> { steer.startSync() }.get().single()
+        Files.createDirectories(session.docsDir)
+        Files.writeString(session.docsDir.resolve("n-1.toml"), "path = 'internal/x/gate.go'\nstart = 4\nend = 4\nsummary = 'Returns the flag.'\nlines = ['\treturn open']\n")
+        steer.reloadDocs()
+        waitFor("the note is indexed") { session.docs.index.notes().size == 1 }
+        withPanel { panel, snapshot ->
+            val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)!!
+            val service = OverviewService.getInstance(project)
+            waitFor("the note's row") { "Returns the flag." in panel.rowTexts(1) }
+            assertTrue(panel.selectItem("note:n-1"))
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            steer.sessionChanged()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("no document open: the note row stays selected", "note:n-1", panel.selectedItemId)
+
+            // with a document open, the rebuild must not move the selection to the document's row
+            service.open(snapshot.repos.single().model.commits.single { it.commit == sha }.overviews.single { it.id == "7cf0812f" }, repo)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("store:7cf0812f", panel.selectedItemId)
+            assertTrue(panel.selectItem("note:n-1"))
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("7cf0812f", service.open?.overview?.id)
+            steer.sessionChanged()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("a document open: the note row stays selected", "note:n-1", panel.selectedItemId)
+            assertEquals("the rebuild re-opens nothing", "7cf0812f", service.open?.overview?.id)
+
+            // the selected row gone: the open document's row is selected
+            Files.delete(session.docsDir.resolve("n-1.toml"))
+            steer.reloadDocs()
+            waitFor("the note row is gone") { session.docs.index.notes().isEmpty() }
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            waitFor("the open document's row is selected") { panel.selectedItemId == "store:7cf0812f" }
+        }
+    }
+
+    /** The View selector: By Date is the default, a pick is remembered in the project's properties. */
+    fun testViewSelectorDefaultsToDateAndIsRemembered() {
+        val service = OverviewService.getInstance(project)
+        val props = com.intellij.ide.util.PropertiesComponent.getInstance(project)
+        val context = com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project)
+        fun selected(a: com.intellij.openapi.actionSystem.AnAction): Boolean {
+            val e = com.intellij.testFramework.TestActionEvent.createTestEvent(a, context)
+            a.update(e)
+            return com.intellij.openapi.actionSystem.Toggleable.isSelected(e.presentation)
+        }
+        try {
+            props.unsetValue("ggnotes.view")
+            assertEquals(NoteView.DATE, service.view)
+            val byType = ViewByTypeAction()
+            val byDate = ViewByDateAction()
+            assertFalse(selected(byType))
+            assertTrue(selected(byDate))
+            byType.actionPerformed(com.intellij.testFramework.TestActionEvent.createTestEvent(byType, context))
+            assertEquals(NoteView.TYPE, service.view)
+            assertEquals("TYPE", props.getValue("ggnotes.view"))
+            assertTrue(selected(byType))
+            assertFalse(selected(byDate))
+        } finally {
+            service.view = NoteView.DATE
+            props.unsetValue("ggnotes.view")
+        }
+    }
+
     /**
      * Two gestures on the tree: a double-click on a row opens it and gives the document the whole
      * window (the Document Only state), and the Delete key is the row's Delete — the same

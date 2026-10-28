@@ -1,0 +1,77 @@
+format = 3
+
+[[notes]]
+id = '0w000001'
+source = 'agent'
+author = 'ada'
+side = 'new'
+range = [0, 0]
+context_hash = ''
+summary = 'Working review'
+rationale = '''{
+  "version": 1,
+  "summary": "Working review",
+  "files": [
+    {
+      "path": "w.go",
+      "annotations": [
+        {
+          "newRange": [
+            1,
+            1
+          ],
+          "summary": "remark"
+        }
+      ]
+    }
+  ]
+}'''
+tags = ['review']
+created = 2026-10-11T08:00:00Z
+updated = 2026-10-11T09:00:00Z
+
+[notes.address]
+Worktree = '/home/dev/src/gate'
+Branch = ''
+Commit = ''
+ShelfID = ''
+Path = ''
+State = 3
+
+[[notes]]
+id = '0w000002'
+source = 'user'
+author = 'me'
+side = 'new'
+range = [1, 1]
+context_hash = ''
+summary = 'live w1'
+created = 2026-10-12T08:00:00Z
+updated = 2026-10-12T08:00:00Z
+
+[notes.address]
+Worktree = '/home/dev/src/gate'
+Branch = ''
+Commit = ''
+ShelfID = ''
+Path = 'w.go'
+State = 3
+
+[[notes]]
+id = '0w000003'
+source = 'user'
+author = 'me'
+side = 'new'
+range = [4, 4]
+context_hash = ''
+summary = 'live x4'
+created = 2026-10-13T08:00:00Z
+updated = 2026-10-13T08:00:00Z
+
+[notes.address]
+Worktree = '/home/dev/src/gate'
+Branch = ''
+Commit = ''
+ShelfID = ''
+Path = 'x.go'
+State = 3

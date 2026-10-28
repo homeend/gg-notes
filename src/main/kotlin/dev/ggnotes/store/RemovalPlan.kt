@@ -1,5 +1,7 @@
 package dev.ggnotes.store
 
+import dev.ggnotes.items.NoteItem
+
 /**
  * What "Remove from gg store" on a tool-window row asks gg to delete, as the
  * lines of one `gg batch` script. gg owns the store format, so the plugin
@@ -9,7 +11,7 @@ package dev.ggnotes.store
  */
 data class RemovalPlan(val kind: Kind, val label: String, val lines: List<String>) {
 
-    enum class Kind { OVERVIEW, REVIEW, THREAD, REPLY, FILE, COMMIT, WORKING }
+    enum class Kind { OVERVIEW, REVIEW, THREAD, REPLY, COMMIT }
 
     /** How many store records the lines name (replies a root cascades to are not counted). */
     val records: Int get() = lines.size
@@ -32,16 +34,24 @@ data class RemovalPlan(val kind: Kind, val label: String, val lines: List<String
 
         fun forReply(reply: NoteRecord) = RemovalPlan(Kind.REPLY, reply.summary, listOf(note(reply.id)))
 
-        fun forFile(f: FileEntry) = RemovalPlan(Kind.FILE, f.path, threadLines(f.threads))
+        /** Store items only (null for a session item): each child's lines first, then the item's own. */
+        fun forItem(item: NoteItem): RemovalPlan? {
+            val own: Triple<Kind, String, String> = when (val p = item.payload) {
+                is dev.ggnotes.items.Payload.StoreOverview -> Triple(Kind.OVERVIEW, item.title, overview(p.overview.id))
+                is dev.ggnotes.items.Payload.StoreReview -> Triple(Kind.REVIEW, item.title, note(p.review.id))
+                is dev.ggnotes.items.Payload.StoreThread ->
+                    Triple(Kind.THREAD, p.thread.root.address.path + lineSuffix(p.thread.root), note(p.thread.root.id))
+                else -> return null
+            }
+            return RemovalPlan(own.first, own.second, childLines(item) + own.third)
+        }
+
+        private fun childLines(item: NoteItem): List<String> =
+            item.children.flatMap { c -> forItem(c)?.lines.orEmpty() }
 
         fun forCommit(c: CommitEntry) = RemovalPlan(
             Kind.COMMIT, c.shortSha,
             c.files.flatMap { threadLines(it.threads) } + c.reviews.flatMap { reviewLines(it) } + c.overviews.map { overview(it.id) },
-        )
-
-        fun forWorking(w: WorkingEntry) = RemovalPlan(
-            Kind.WORKING, w.worktree,
-            w.files.flatMap { threadLines(it.threads) } + w.reviews.flatMap { reviewLines(it) },
         )
 
         private fun lineSuffix(n: NoteRecord): String = when {
