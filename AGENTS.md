@@ -81,7 +81,7 @@ See `examples/README.md` for a walkthrough of each file.
 | Checkout | `~/git-focus` (branch `master`) |
 | Common dir git prints | `/home/homeend/git-focus/.git` |
 | Key | `4acf7db7161a42e0` (confirmed on disk) |
-| Store | `~/.local/state/gg/notes/4acf7db7161a42e0/commits.toml` (8 records, 1 overview) |
+| Store | `~/.local/state/gg/notes/4acf7db7161a42e0/commits.toml` (8 records, 1 overview when this was written; gg prunes it — 2 records on 2026-10-28) |
 | The overview | "GitFocus tab: branch-first rows", commit `d5efa035df1f3c4c949040bebb924a35d0ea61a0` (present in the checkout: `Merge branch 'feat/worktrees-branch-first'`), author "Claude Opus 5.5" |
 
 **Acceptance:** open `~/git-focus` in the sandbox IDE → the tool window
@@ -91,6 +91,11 @@ that commit) → the remark boxes appear beside those lines → Back returns
 to the overview. Then point `XDG_STATE_HOME` at a temp dir holding
 `notes/4acf7db7161a42e0/` with the two `examples/*.toml` files and the
 window shows exactly the two fixture overviews.
+
+The automated half runs on a frozen copy, never on the live store:
+`examples/gitfocus-acceptance/` holds the history as a git bundle and the
+8 records (its README says where each came from);
+`GitFocusAcceptanceIntegrationTest` clones the bundle into a temp dir.
 
 A second confirmed key, for a unit test of the derivation:
 `/work/gigagit/.git` → `d10200a3a219735f`.
