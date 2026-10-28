@@ -1,6 +1,6 @@
 ---
 name: agent-cross-review
-description: Use when the user asks for a cross-review — 2 or 3 reviewers on different models review one change, you settle their disagreements and show one merged review in their JetBrains IDE with the AgentNotes plugin.
+description: Use when the user asks for a cross-review — 2 or 3 reviewers on different models review one change, you settle their disagreements and show one merged review in their JetBrains IDE with the AgentNotes plugin — works with or without gg.
 argument-hint: "[commit | branch | working] [2|3] [what to focus on]"
 ---
 
@@ -16,6 +16,12 @@ one note per remark and one overview that is the review.
 (`../agent-review/SKILL.md`), both installed beside this skill — read both
 first.**
 
+**First run FILES.md §0:** inside gg → stop and use the gg skills; outside gg,
+never ask the user to start gg or to set anything.
+
+The merged review is stored by agent-review's route: in gg when FILES.md §0
+says so (§9), else as files.
+
 **Wording.** Write every text the user reads — the merged summary, the
 remarks, your rulings, your reply — in ASD-STE100 (80% compatibility when
 possible): short sentences, active voice, one meaning per word, no idioms.
@@ -24,8 +30,9 @@ reviewer the same rule.
 
 ## Steps
 
-1. **What is reviewed** — agent-review step 1: the reviewed version must be
-   checked out in the worktree the IDE shows; otherwise ask and stop. Work
+1. **What is reviewed** — agent-review step 1: on the files route the
+   reviewed version must be checked out in the worktree the IDE shows;
+   otherwise ask and stop. Work
    out the range and the base (agent-review step 2) once; every reviewer
    gets the same values.
 2. **How many.** The number the user gave. Missing, or not 2 or 3 → ask:
@@ -128,4 +135,7 @@ When the user pastes a link copied in the IDE (`Agent Notes note …` from a
 remark, `Agent Notes overview …` from a review), follow
 `../agent-overview/FILES.md` §8: read the file it names and act on that
 remark or review — for example fix what the remark names.
+
+**Delete.** Only when the user asks: FILES.md §10.
+**Show an existing one.** FILES.md §11.
 

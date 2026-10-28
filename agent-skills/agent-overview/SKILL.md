@@ -1,6 +1,6 @@
 ---
 name: agent-overview
-description: Use when the user asks to present, visualise or walk them through a result or a change in their JetBrains IDE (with the AgentNotes plugin) — notes on the exact lines plus an overview whose links open the code.
+description: Use when the user asks to present, visualise or walk them through a result or a change in their JetBrains IDE (with the AgentNotes plugin) — notes on the exact lines plus an overview whose links open the code — works with or without gg.
 argument-hint: "[what to present]"
 ---
 
@@ -15,6 +15,9 @@ note beside it. Present the result this way instead of a long chat answer.
 You write plain files; the IDE plugin shows them. **How to write them is in
 [FILES.md](FILES.md) beside this skill — read it first.** It also says what
 an anchor can point at: only files as they are on disk in this worktree.
+
+**First run FILES.md §0:** inside gg → stop and use the gg skills; outside gg,
+never ask the user to start gg or to set anything.
 
 **Wording.** Write every text the user reads — the overview, the notes,
 your reply — in ASD-STE100 (80% compatibility when possible): short
@@ -51,8 +54,10 @@ work), collect these facts first, with git, in the worktree:
 6. **Mechanical files.** Note renames, formatting-only edits and generated
    files. They go in one line of "Not covered", not in the walk.
 
-The worktree must hold the version you present (FILES.md §1). If the user
-names a commit that is not checked out, ask them to check it out first.
+On the files route the worktree must hold the version you present
+(FILES.md §1). If the user names a commit that is not checked out and gg is
+not usable, ask them to check it out first. With usable gg (§0), a commit
+needs no checkout.
 
 ## What the overview says — a walkthrough, never a file list
 
@@ -107,6 +112,10 @@ link make it plain text (FILES.md §5). ≤ 64 KiB, ≤ 100 anchors.
 
 ## Steps
 
+0. **Route** (FILES.md §0). An overview of a commit, with usable gg:
+   store it with FILES.md §9 `overview save`. The anchors are lines at the
+   commit. Steps 2–4 and 6 are then FILES.md §9. A walk through uncommitted
+   work or the working tree: steps 1–7 below, as written.
 1. **Finish first.** Make every edit before you write a single note.
 2. **Find the directory** (FILES.md §2) for the worktree the IDE shows.
 3. **Notes on the lines.** One note file per remark, on the exact lines it
@@ -127,3 +136,6 @@ link make it plain text (FILES.md §5). ≤ 64 KiB, ≤ 100 anchors.
 When the user later pastes a link copied in the IDE (`Agent Notes overview
 …` or `Agent Notes note …`), follow FILES.md §8: read the file it names —
 that is the document or the step they ask about — and work in its worktree.
+
+**Delete.** Only when the user asks: FILES.md §10.
+**Show an existing one.** FILES.md §11.
