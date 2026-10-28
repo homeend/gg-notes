@@ -23,6 +23,19 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.5.0</h3>
+        <ul>
+            <li>The tool window lists <b>items</b> in two views, chosen from the View menu:
+                <b>By Date</b> (the default) and <b>By Type</b> (branch, commit, pull request,
+                file, other). Every item has a kind icon and a row of title, owner, author and
+                time. The commit groups, the Working tree group and the Session group are gone.</li>
+            <li>Notes that a review or an overview contains are nested under it.</li>
+            <li>Session notes are listed too; a click opens their lines in the working file
+                without taking focus from the tree.</li>
+            <li><b>Delete</b> removes an item together with its children;
+                <b>Remove Everything on This Commit</b> removes all of a commit's items.</li>
+        </ul>
+
         <h3>0.4.6</h3>
         <ul>
             <li><b>Remove from gg Store</b> finds <code>gg</code> by itself: on the IDE's PATH, on

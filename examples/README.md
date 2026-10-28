@@ -80,6 +80,10 @@ so this record is the acceptance scenario of `AGENTS.md` §3.2: opened on
 that checkout, the plugin must show this overview and open these files at
 these lines.
 
+## `items/` — the item-model fixture
+
+A store (`commits.toml`, `previews.toml`, `worktrees/`) for the tool window's item views: By Date / By Type, and notes nested under their review or overview.
+
 ## Link forms you must handle (spec §6–§7)
 
 | In the markdown | Rendered as |
