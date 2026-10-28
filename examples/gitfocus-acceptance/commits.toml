@@ -1,0 +1,164 @@
+format = 3
+
+[[notes]]
+id = 'fd1eaedb'
+source = 'agent'
+author = 'Claude Code'
+side = 'new'
+range = [0, 0]
+context_hash = ''
+summary = "Review: 4e55504 Merge branch 'fix/worktrees-fit-rounding' (4e55504^..4e55504)"
+rationale = "**Review could not run as specified.** The target is the merge commit `4e55504` (branch `fix/worktrees-fit-rounding`, single commit `b434be1`), but every Bash invocation in this context was denied (\"requires approval\" — including plain `ls`), and the sandboxed `ctx_execute` and memory `get_observations` tools were ungranted too. Git objects are zlib-compressed, so `Read` cannot produce the diff. **To get the real diff-scoped review, run `git diff 4e55504^..4e55504` (from `/home/homeend/git-focus`) and pass the text back, or grant Bash.**\n\nWhat I could do: a **working-tree review** of the files the fix plausibly touched, identified from the commit message (\"a branch that fits its row was cut by a pixel of measurement rounding\"), the reflog (`.git/logs/HEAD:321`), and memory hints (\"Fix text-fitting rounding error with kerned metrics\", 0.21.1 \"UI branch truncation fix\"):\n- `/home/homeend/git-focus/src/main/kotlin/dev/gitfocus/worktrees/RowTextFit.kt` (`fitLeft`/`fitLeftMiddle` measure branch+suffix joined — the fix itself)\n- `/home/homeend/git-focus/src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt` (`ItemRenderer.fit()`, `FIT_SLACK`)\n- `/home/homeend/git-focus/src/test/kotlin/dev/gitfocus/worktrees/RowTextFitTest.kt` (kerned-metrics regression tests)\n- `/home/homeend/git-focus/src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt` (verified `removePrefix` suffix derivation is sound; no finding)\n\nAngles B (removed behavior) and C (caller trace) were not executable without the diff and grep. Nothing below is a claim about what the merge *introduced*; each is \"in the current code\". No CLAUDE.md violation is quotable (non-ff `fix/…` merge matches the worktree workflow).\n\n```json\n[\n  {\n    \"file\": \"src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt\",\n    \"line\": 448,\n    \"summary\": \"fit() measures text with the list's FontMetrics (list.getFontMetrics(left.font)) while the JBLabels paint with their own; JComponent.getFontMetrics routes through SwingUtilities2 and honors the component's AA/fractional-metrics client property, which JBList and JBLabel can carry differently, so a one-pixel rounding mismatch of the same class the fix targeted can still occur (plausible; working-tree review).\",\n    \"failure_scenario\": \"LaF/UISettings give the list and labels different AA text hints (int vs fractional metrics) -> a branch measured as fitting by the list's metrics is 1px wider under the label's metrics -> JLabel elides it with '...' even though RowTextFit said it fits; FIT_SLACK=2 masks it only up to 2px. Fix: left.getFontMetrics(left.font) / right.getFontMetrics(right.font).\"\n  },\n  {\n    \"file\": \"src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt\",\n    \"line\": 481,\n    \"summary\": \"FIT_SLACK=2 is a slack heuristic subtracted from the available width to hide measurement mismatch rather than eliminating it; with joined measurement (RowTextFit.fitLeft) and same-component metrics the slack should be unnecessary (altitude).\",\n    \"failure_scenario\": \"Any residual mismatch larger than 2px (different fonts/scales/AA settings) still clips; meanwhile every row permanently loses 2px of name width. Root-cause form: measure with the painting component's metrics and drop the slack.\"\n  },\n  {\n    \"file\": \"src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt\",\n    \"line\": 454,\n    \"summary\": \"fit() reads close.preferredSize.width before close.icon is assigned for the current cell (line 431), so the reserved X-column width comes from the previous cell's icon.\",\n    \"failure_scenario\": \"Today Close / CloseHovered / EmptyIcon.ICON_16 are all 16px so it is inert, but any icon-size change (or a non-16 EmptyIcon) makes every row's fit off by the difference, silently clipping the name label. Move the close.icon assignment above the fit() calls.\"\n  },\n  {\n    \"file\": \"src/main/kotlin/dev/gitfocus/worktrees/RowTextFit.kt\",\n    \"line\": 63,\n    \"summary\": \"fitLeft/fitLeftMiddle return ELLIPSIS + suffix even when that alone exceeds max, so the left label can be wider than the width split() granted it.\",\n    \"failure_scenario\": \"Very narrow tool window with a row like 'main (main) (this window)': split.left < width('… (main) (this window)') -> left label (BorderLayout WEST, preferred width) overshoots -> the CENTER name label is squeezed and JLabel adds its own '...' on top of fitMiddle's ellipsis (double ellipsis / hidden name). Not a crash; low.\"\n  },\n  {\n    \"file\": \"src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt\",\n    \"line\": 457,\n    \"summary\": \"The renderer's composition that the kerning fix depends on (leftFull measured joined via leftFor(Int.MAX_VALUE), then split(), then re-fit to split.left) lives in private Swing code with no test; only the pure RowTextFit layer has the kerned regression tests.\",\n    \"failure_scenario\": \"A future edit that computes leftFull as leftWidth(branch) + leftWidth(suffix) (measuring apart again) reintroduces the exact 1px bug and the suite stays green. Extract the fixed/available arithmetic into a pure RowTextFit function taking widths so it can be covered like split().\"\n  },\n  {\n    \"file\": \"src/main/kotlin/dev/gitfocus/worktrees/RowTextFit.kt\",\n    \"line\": 83,\n    \"summary\": \"longestTail and fitMiddle are linear scans calling widthOf (FontMetrics.stringWidth, itself O(n)) once per candidate, and fit() re-runs them for every visible cell on each repaint, including the list.repaint() fired on every hover change (WorktreesPanel.kt:178).\",\n    \"failure_scenario\": \"Long branch names in a narrow window: O(n^2) string measurement per cell per mouse-move over the X column. Width is monotone in kept, so a binary search (or caching per item+width) is the cheaper form. Low.\"\n  }\n]\n```"
+tags = ['review']
+scope = '4e55504b8f62fa011df6780368a99dcb567c3087^..4e55504b8f62fa011df6780368a99dcb567c3087'
+created = 2026-09-28T10:50:25.211529953Z
+updated = 2026-09-28T10:50:25.211529953Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '4e55504b8f62fa011df6780368a99dcb567c3087'
+ShelfID = ''
+Path = ''
+State = 0
+
+[[notes]]
+id = '7cf0812f'
+source = 'agent'
+author = 'Claude Opus 5.5'
+side = 'new'
+range = [0, 0]
+context_hash = ''
+summary = 'GitFocus tab: branch-first rows'
+rationale = "{\n  \"version\": 1,\n  \"title\": \"GitFocus tab: branch-first rows\",\n  \"overview\": \"This merge changes each worktree row in the GitFocus tab: the row starts with the branch, the directory name is in a right column, and the full path is in the tooltip.\\n\\n## 1. Row text\\n\\n- [`rowText`](src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt:20-28) makes the text of a row. It does not use the directory name now. Before this change, the text was `name [branch]`.\\n- [This line](src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt:21) gives the branch. When the branch is null or blank, it gives the `(detached)` text.\\n- [The `(main)` marker](src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt:22) and [the status suffix](src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt:23-27) come after the branch, as before.\\n\\n## 2. Right column\\n\\n- [The renderer](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:412) puts the directory name in the right label. Before, this label showed the full path.\\n- [The right label](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:390) has right alignment. [The panel](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:398) puts it in the CENTER area. Thus, the name moves to the right edge when you make the tool window wider.\\n- A window that has no worktree shows [no text](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:419) in the right column now.\\n\\n## 3. Tooltip\\n\\n- [`getToolTipText`](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:105-107) shows the full path above the double-click hint. On the X, the tooltip is \\\"Close this window\\\", as before.\\n- [`pathAt`](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:268-273) finds the row below the mouse pointer. [This check](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:271) stops a tooltip below the last row.\\n- [`rowTooltip`](src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt:34-37) makes the HTML text. It escapes the path and the hint. Thus, a `\\u003c` or a `\\u0026` in a path shows correctly.\\n\\n## 4. Speed search\\n\\n- [Speed search](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:131) adds the directory name and the full path to the row text. Thus, you can still find a row by its directory name.\\n\\n## 5. Text resources\\n\\n- The new key `worktrees.row.detached` is in [English](src/main/resources/messages/GitFocusBundle.properties:217), [Japanese](src/main/resources/messages/GitFocusBundle_ja.properties:208), [Korean](src/main/resources/messages/GitFocusBundle_ko.properties:208), [Polish](src/main/resources/messages/GitFocusBundle_pl.properties:210), [Russian](src/main/resources/messages/GitFocusBundle_ru.properties:208) and [Chinese](src/main/resources/messages/GitFocusBundle_zh_CN.properties:208).\\n- [This helper](src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt:348) reads the key for the renderer and for speed search.\\n\\n## 6. Tests and manual checks\\n\\n- [The row text test](src/test/kotlin/dev/gitfocus/worktrees/WorktreesListTest.kt:96-99) makes sure that the text is the branch only.\\n- [The detached test](src/test/kotlin/dev/gitfocus/worktrees/WorktreesListTest.kt:101-104) makes sure that a null branch and a blank branch both show `(detached)`.\\n- [The main checkout test](src/test/kotlin/dev/gitfocus/worktrees/WorktreesListTest.kt:106-110) makes sure of the order: branch, `(main)`, status.\\n- [The tooltip test](src/test/kotlin/dev/gitfocus/worktrees/WorktreesListTest.kt:112-115) makes sure of the HTML escape and of the hint-only result.\\n- The smoke checklist has new text for [the Alt+Shift+W item](docs/smoke-checklist.md:229-232) and for [the tool window items](docs/smoke-checklist.md:517-526).\\n\\n## 7. Open items\\n\\n- The unit tests do not examine the renderer or `pathAt`, because they are Swing code. Do [the smoke items](docs/smoke-checklist.md:517-526) manually.\\n- A window with no worktree does not show its path in the row now. Only the tooltip shows it. Make sure that this is the behavior you want.\\n- This commit does not cut long branch names. Later commits do this (`a3d7137` and the fix `b434be1`).\\n\",\n  \"files\": [\n    {\n      \"path\": \"src/main/kotlin/dev/gitfocus/worktrees/WorktreesList.kt\",\n      \"annotations\": [\n        {\n          \"newRange\": [\n            21,\n            21\n          ],\n          \"summary\": \"A null branch and a blank branch both show the detached text.\",\n          \"rationale\": \"Git can give a blank branch for a detached HEAD. The `isNotBlank` check makes sure that the row never starts with an empty text.\"\n        },\n        {\n          \"newRange\": [\n            35,\n            37\n          ],\n          \"summary\": \"The function escapes the path and the hint before it puts them in HTML.\",\n          \"rationale\": \"A directory name can contain `\\u003c` or `\\u0026`. Without the escape, Swing reads these characters as HTML and the tooltip shows incorrect text.\"\n        }\n      ]\n    },\n    {\n      \"path\": \"src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt\",\n      \"annotations\": [\n        {\n          \"newRange\": [\n            131,\n            131\n          ],\n          \"summary\": \"Speed search adds the directory name and the full path to the row text.\",\n          \"rationale\": \"The row text has no directory name now. Without this line, you cannot find a row by its directory name.\"\n        },\n        {\n          \"newRange\": [\n            271,\n            271\n          ],\n          \"summary\": \"This check stops a tooltip when the pointer is below the last row.\",\n          \"rationale\": \"`locationToIndex` gives the nearest row, also when the pointer is in the empty area below the list. The cell bounds check makes sure that the pointer is on the row.\"\n        },\n        {\n          \"newRange\": [\n            398,\n            398\n          ],\n          \"summary\": \"The right label is in the CENTER area, so it gets all the free width.\",\n          \"rationale\": \"Together with the right alignment on line 390, the name stays at the right edge, before the X column, at all tool window widths.\"\n        },\n        {\n          \"newRange\": [\n            419,\n            419\n          ],\n          \"summary\": \"A window with no worktree shows no text in the right column now.\",\n          \"rationale\": \"Before, this column showed the full path. Now only the tooltip shows the path for this type of row.\"\n        }\n      ]\n    },\n    {\n      \"path\": \"src/test/kotlin/dev/gitfocus/worktrees/WorktreesListTest.kt\",\n      \"annotations\": [\n        {\n          \"newRange\": [\n            103,\n            103\n          ],\n          \"summary\": \"This assert uses a blank branch, not a null branch.\",\n          \"rationale\": \"It makes sure that the `isNotBlank` check in rowText works.\"\n        }\n      ]\n    }\n  ]\n}"
+tags = ['overview']
+created = 2026-10-13T23:53:56.742993129Z
+updated = 2026-10-13T23:53:56.742993129Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = 'd5efa035df1f3c4c949040bebb924a35d0ea61a0'
+ShelfID = ''
+Path = ''
+State = 0
+
+[[notes]]
+id = '704ad997'
+source = 'agent'
+author = 'agent'
+side = 'new'
+range = [63, 63]
+context_hash = '7757e63c9ee03353bb59d54b8439d15481714ddbb8e2723400b22f18eee43058'
+summary = 'fitLeft re-measures branch+suffix on every candidate'
+rationale = 'Each probe now concatenates the suffix and measures the joined string. Fine for short rows; worth keeping in mind if fitBranch ever probes many candidates per paint.'
+created = 2026-09-24T11:02:51.272098375Z
+updated = 2026-09-24T11:02:51.272098375Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = 'b434be1e7595bd3b71ac92b2c698a9d07df48c1b'
+ShelfID = ''
+Path = 'src/main/kotlin/dev/gitfocus/worktrees/RowTextFit.kt'
+State = 0
+
+[[notes]]
+id = '6d8d7c4c'
+source = 'agent'
+author = 'agent'
+side = 'new'
+range = [67, 67]
+context_hash = '5a5f092e3b808c35c0522d55281238fd6fe5697f923867f13a4ddb5909ba4e69'
+summary = 'fitLeftMiddle is a thin twin of fitLeft'
+rationale = 'The two helpers differ only in the cutter (fitBranch vs fitMiddle). A single helper taking the cutter as a parameter would avoid the pair drifting apart.'
+created = 2026-09-24T11:02:51.275269495Z
+updated = 2026-09-24T11:02:51.275269495Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = 'b434be1e7595bd3b71ac92b2c698a9d07df48c1b'
+ShelfID = ''
+Path = 'src/main/kotlin/dev/gitfocus/worktrees/RowTextFit.kt'
+State = 0
+
+[[notes]]
+id = '0bcacf55'
+source = 'agent'
+author = 'agent'
+side = 'new'
+range = [419, 419]
+context_hash = 'bee3da0ad4156361ed95f97194f88123fdb5482f55568cb2aca824d236f5af72'
+summary = 'Suffix is derived by removePrefix(branch)'
+rationale = 'If rowText ever stops starting with the branch label, removePrefix silently returns the whole text and the branch would be rendered twice.'
+created = 2026-09-24T11:02:51.277998925Z
+updated = 2026-09-24T11:02:51.277998925Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = 'b434be1e7595bd3b71ac92b2c698a9d07df48c1b'
+ShelfID = ''
+Path = 'src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt'
+State = 0
+
+[[notes]]
+id = '556a13f5'
+source = 'agent'
+author = 'agent'
+side = 'new'
+range = [427, 427]
+context_hash = '0e9ec8a1654c01c11886fa06ab4d137212a04a11369d829ba3a162378e22939d'
+summary = 'Window rows now share the joined-measure fix'
+rationale = "Good: the same one-pixel kerning cut could have hit window names with ' (this window)'."
+created = 2026-09-24T11:02:51.280602743Z
+updated = 2026-09-24T11:02:51.280602743Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = 'b434be1e7595bd3b71ac92b2c698a9d07df48c1b'
+ShelfID = ''
+Path = 'src/main/kotlin/dev/gitfocus/worktrees/WorktreesPanel.kt'
+State = 0
+
+[[notes]]
+id = 'a00ad56b'
+source = 'agent'
+author = 'agent'
+side = 'new'
+range = [79, 79]
+context_hash = 'ce0004d1bb05a66a3539a839930b723ba12251c921be1f79173028777458cda3'
+summary = 'Nice minimal kerning model'
+rationale = "Subtracting one unit whenever ' (' appears reproduces the real bug without a font. Could add a case where the suffix alone is wider than max to pin that behavior."
+created = 2026-09-24T11:02:51.283252137Z
+updated = 2026-09-24T11:02:51.283252137Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = 'b434be1e7595bd3b71ac92b2c698a9d07df48c1b'
+ShelfID = ''
+Path = 'src/test/kotlin/dev/gitfocus/worktrees/RowTextFitTest.kt'
+State = 0
+
+[[notes]]
+id = '2df2b26e'
+source = 'agent'
+author = 'agent'
+side = 'new'
+range = [89, 89]
+context_hash = '909cf839cd626c568aa74342befd72635d4449765f8b38c4ccbfec3bb48d4add'
+summary = 'Suffix-preservation test covers two widths'
+rationale = 'Consider also max smaller than the suffix itself (e.g. 5) to document what the row shows when even the suffix does not fit.'
+created = 2026-09-24T11:02:51.286089914Z
+updated = 2026-09-24T11:02:51.286089914Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = 'b434be1e7595bd3b71ac92b2c698a9d07df48c1b'
+ShelfID = ''
+Path = 'src/test/kotlin/dev/gitfocus/worktrees/RowTextFitTest.kt'
+State = 0

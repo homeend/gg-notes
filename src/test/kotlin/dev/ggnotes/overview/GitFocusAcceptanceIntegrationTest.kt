@@ -2,7 +2,6 @@ package dev.ggnotes.overview
 
 import com.intellij.dvcs.repo.VcsRepositoryManager
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vcs.VcsDirectoryMapping
@@ -16,37 +15,43 @@ import git4idea.GitVcs
 import git4idea.repo.GitRepositoryManager
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.Paths
 
 /**
- * AGENTS.md §3.2, the acceptance scenario, as far as a test can take it:
- * the real `~/git-focus` checkout and its live gg store. Skips (passes
- * with a log line) on a machine without that checkout or that store, so
- * the suite stays portable. The human half — looking at the tool window,
- * clicking `rowText`, pressing Back — stays a manual gate (`runIde`).
+ * AGENTS.md §3.2, the acceptance scenario, as far as a test can take it, on a
+ * FROZEN copy: `examples/gitfocus-acceptance/` holds the `~/git-focus` history
+ * (`git-focus.bundle`, master) and the 8 records gg wrote about it
+ * (`commits.toml`). Each test clones the bundle into a temp dir and puts the
+ * store under a temp `XDG_STATE_HOME`, at the key of that clone, so the live
+ * store — which gg prunes and rewrites — never decides the result. The human
+ * half — looking at the tool window, clicking `rowText`, pressing Back —
+ * stays a manual gate (`runIde`).
  */
 class GitFocusAcceptanceIntegrationTest : HeavyPlatformTestCase() {
 
-    private val log = logger<GitFocusAcceptanceIntegrationTest>()
-    private val checkout = File(System.getProperty("user.home"), "git-focus")
+    private val frozen = Paths.get("examples/gitfocus-acceptance")
     private val commit = "d5efa035df1f3c4c949040bebb924a35d0ea61a0"
+    private lateinit var checkout: File
 
-    private fun prerequisites(): Boolean {
-        if (!File(checkout, ".git").exists()) return skip("no ~/git-focus checkout")
-        val common = runCatching {
-            val p = ProcessBuilder("git", "rev-parse", "--path-format=absolute", "--git-common-dir").directory(checkout).start()
-            p.inputStream.bufferedReader().readText().trim().also { p.waitFor() }
-        }.getOrNull() ?: return skip("git rev-parse failed in ~/git-focus")
-        val key = StoreLocator.key(common)
-        if (key != "4acf7db7161a42e0") return skip("unexpected key $key for $common")
-        val store = StoreLocator.defaultBaseDir().resolve(key).resolve("commits.toml")
-        if (!Files.isRegularFile(store)) return skip("no live store at $store")
-        return true
+    /** Clones the frozen history and installs [storeFiles] as its gg store; returns the clone. */
+    private fun frozenCheckout(vararg storeFiles: Path): File {
+        checkout = File(createTempDirectory(), "git-focus")
+        git(checkout.parentFile, "clone", "--quiet", "--branch", "master", frozen.resolve("git-focus.bundle").toAbsolutePath().toString(), checkout.name)
+        val common = git(checkout, "rev-parse", "--path-format=absolute", "--git-common-dir")
+        val stateHome = createTempDirectory().toPath()
+        val store = stateHome.resolve("gg").resolve("notes").resolve(StoreLocator.key(common))
+        Files.createDirectories(store)
+        for (f in storeFiles) Files.copy(f, store.resolve(f.fileName.toString()))
+        System.setProperty("ggnotes.env.XDG_STATE_HOME", stateHome.toString())
+        return checkout
     }
 
-    private fun skip(why: String): Boolean {
-        log.warn("GitFocusAcceptanceIntegrationTest skipped: $why")
-        return false
+    private fun git(dir: File, vararg args: String): String {
+        val p = ProcessBuilder(listOf("git") + args).directory(dir).redirectErrorStream(true).start()
+        val out = p.inputStream.bufferedReader().readText().trim()
+        assertEquals("git ${args.joinToString(" ")}: $out", 0, p.waitFor())
+        return out
     }
 
     private fun mapRepository(): git4idea.repo.GitRepository {
@@ -66,8 +71,8 @@ class GitFocusAcceptanceIntegrationTest : HeavyPlatformTestCase() {
         }
     }
 
-    fun testLiveStoreShowsTheBranchFirstRowsOverviewAndRowTextOpensWorktreesList() {
-        if (!prerequisites()) return
+    fun testFrozenStoreShowsTheBranchFirstRowsOverviewAndRowTextOpensWorktreesList() {
+        frozenCheckout(frozen.resolve("commits.toml"))
         val repo = mapRepository()
         val service = OverviewService.getInstance(project)
         val snapshot = ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { service.refreshSync() }.get()
@@ -99,9 +104,9 @@ class GitFocusAcceptanceIntegrationTest : HeavyPlatformTestCase() {
         assertEquals(remarks.size, editor.inlayModel.getBlockElementsInRange(0, doc.textLength).size)
     }
 
-    /** AGENTS.md §5: the live store's 7 other records — a prose review and six line notes gg wrote — list under their commits. */
-    fun testLiveStoreListsTheProseReviewAndTheSixLineNotesUnderTheirCommits() {
-        if (!prerequisites()) return
+    /** AGENTS.md §5: the store's 7 other records — a prose review and six line notes gg wrote — list under their commits. */
+    fun testFrozenStoreListsTheProseReviewAndTheSixLineNotesUnderTheirCommits() {
+        frozenCheckout(frozen.resolve("commits.toml"))
         val repo = mapRepository()
         val service = OverviewService.getInstance(project)
         val snapshot = ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { service.refreshSync() }.get()
@@ -146,13 +151,7 @@ class GitFocusAcceptanceIntegrationTest : HeavyPlatformTestCase() {
     }
 
     fun testFixtureStoreUnderOverriddenStateHomeShowsExactlyTheTwoFixtureOverviews() {
-        if (!prerequisites()) return
-        val stateHome = createTempDirectory().toPath()
-        val store = stateHome.resolve("gg").resolve("notes").resolve("4acf7db7161a42e0")
-        Files.createDirectories(store)
-        Files.copy(Paths.get("examples/commits.toml"), store.resolve("commits.toml"))
-        Files.copy(Paths.get("examples/previews.toml"), store.resolve("previews.toml"))
-        System.setProperty("ggnotes.env.XDG_STATE_HOME", stateHome.toString())
+        frozenCheckout(Paths.get("examples/commits.toml"), Paths.get("examples/previews.toml"))
         mapRepository()
         val service = OverviewService.getInstance(project)
         val snapshot = ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { service.refreshSync() }.get()

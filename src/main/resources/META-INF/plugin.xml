@@ -23,6 +23,15 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.4.6</h3>
+        <ul>
+            <li><b>Remove from gg Store</b> finds <code>gg</code> by itself: on the IDE's PATH, on
+                the login shell's PATH, then in Go's bin directory (<code>~/go/bin</code>,
+                <code>%USERPROFILE%\go\bin</code> on Windows, or <code>GOBIN</code> /
+                <code>GOPATH</code>). An IDE started from the desktop or from Toolbox no longer
+                needs a setting to reach a <code>gg</code> installed with <code>go install</code>.</li>
+        </ul>
+
         <h3>0.4.5</h3>
         <ul>
             <li>Fixed for 2025.3 and later: opening a file's staged copy (an agent's navigate to

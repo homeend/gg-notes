@@ -1,8 +1,9 @@
 package dev.ggnotes.git
 
-import com.intellij.execution.configurations.PathEnvironmentVariableUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.util.SystemInfo
+import com.intellij.util.EnvironmentUtil
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
@@ -22,10 +23,16 @@ object GgCli {
         val ok: Boolean get() = exitCode == 0
     }
 
-    /** The executable to run, or null when none is configured or on PATH (`gg.exe` via PATHEXT on Windows). */
+    /** The executable to run, or null when gg is found nowhere [GgLocator] looks. */
     fun executable(): File? {
         System.getProperty("ggnotes.gg")?.takeIf { it.isNotBlank() }?.let { return File(it) }
-        return PathEnvironmentVariableUtil.findExecutableInPathOnAnyOS("gg")
+        return GgLocator.find(
+            path = System.getenv("PATH"),
+            shellPath = EnvironmentUtil.getValue("PATH"),
+            env = System::getenv,
+            home = System.getProperty("user.home"),
+            windows = SystemInfo.isWindows,
+        )
     }
 
     /**
@@ -36,7 +43,7 @@ object GgCli {
      */
     fun batch(workDir: File, lines: List<String>, timeoutSeconds: Long = 60): Result {
         if (ApplicationManager.getApplication()?.isDispatchThread == true) LOG.error("GgNotes: gg must not run on the EDT")
-        val exe = executable() ?: return Result(127, "", "gg is not on PATH (set the system property ggnotes.gg to its path)")
+        val exe = executable() ?: return Result(127, "", "gg was not found on PATH or in Go's bin directory (~/go/bin)")
         return try {
             run(exe, workDir, lines, timeoutSeconds)
         } catch (t: Exception) {
