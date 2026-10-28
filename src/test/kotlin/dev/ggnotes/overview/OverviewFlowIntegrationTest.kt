@@ -766,6 +766,34 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         }
     }
 
+    /** The View selector: By Date is the default, a pick is remembered in the project's properties. */
+    fun testViewSelectorDefaultsToDateAndIsRemembered() {
+        val service = OverviewService.getInstance(project)
+        val props = com.intellij.ide.util.PropertiesComponent.getInstance(project)
+        val context = com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project)
+        fun selected(a: com.intellij.openapi.actionSystem.AnAction): Boolean {
+            val e = com.intellij.testFramework.TestActionEvent.createTestEvent(a, context)
+            a.update(e)
+            return com.intellij.openapi.actionSystem.Toggleable.isSelected(e.presentation)
+        }
+        try {
+            props.unsetValue("ggnotes.view")
+            assertEquals(NoteView.DATE, service.view)
+            val byType = ViewByTypeAction()
+            val byDate = ViewByDateAction()
+            assertFalse(selected(byType))
+            assertTrue(selected(byDate))
+            byType.actionPerformed(com.intellij.testFramework.TestActionEvent.createTestEvent(byType, context))
+            assertEquals(NoteView.TYPE, service.view)
+            assertEquals("TYPE", props.getValue("ggnotes.view"))
+            assertTrue(selected(byType))
+            assertFalse(selected(byDate))
+        } finally {
+            service.view = NoteView.DATE
+            props.unsetValue("ggnotes.view")
+        }
+    }
+
     /**
      * Two gestures on the tree: a double-click on a row opens it and gives the document the whole
      * window (the Document Only state), and the Delete key is the row's Delete — the same

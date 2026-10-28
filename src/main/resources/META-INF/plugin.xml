@@ -265,8 +265,16 @@
         <action id="GgNotes.DeleteSessionNotesOnFile" class="dev.ggnotes.steer.DeleteSessionNotesOnFileAction">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
+        <action id="GgNotes.ViewByDate" class="dev.ggnotes.overview.ViewByDateAction"/>
+        <action id="GgNotes.ViewByType" class="dev.ggnotes.overview.ViewByTypeAction"/>
+        <group id="GgNotes.ViewMode" popup="true" icon="AllIcons.Actions.GroupBy">
+            <reference ref="GgNotes.ViewByDate"/>
+            <reference ref="GgNotes.ViewByType"/>
+        </group>
         <group id="GgNotes.Toolbar">
             <reference ref="GgNotes.Refresh"/>
+            <separator/>
+            <reference ref="GgNotes.ViewMode"/>
             <separator/>
             <reference ref="GgNotes.PreviousAnchor"/>
             <reference ref="GgNotes.NextAnchor"/>

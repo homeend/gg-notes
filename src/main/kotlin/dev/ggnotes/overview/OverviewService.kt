@@ -102,6 +102,7 @@ class OverviewService(private val project: Project) : Disposable {
 
     companion object {
         const val TOOL_WINDOW_ID = "GgNotes"
+        const val VIEW_PROPERTY = "ggnotes.view"
         private val LOG = logger<OverviewService>()
         fun getInstance(project: Project): OverviewService = project.getService(OverviewService::class.java)
     }
@@ -124,6 +125,17 @@ class OverviewService(private val project: Project) : Disposable {
         listHidden = hidden
         ui?.showList(!hidden)
     }
+
+    /**
+     * The tool window's grouping (toolbar "View"): remembered per project. Setting it runs the
+     * snapshot listeners, as a snapshot change does, so the panel rebuilds.
+     */
+    var view: NoteView
+        get() = NoteView.parse(com.intellij.ide.util.PropertiesComponent.getInstance(project).getValue(VIEW_PROPERTY))
+        set(value) {
+            com.intellij.ide.util.PropertiesComponent.getInstance(project).setValue(VIEW_PROPERTY, value.name)
+            invokeLater { snapshotListeners.forEach { it() } }
+        }
 
     private val snapshotListeners = CopyOnWriteArrayList<() -> Unit>()
     private val subjects = ConcurrentHashMap<String, java.util.Optional<String>>() // "root|sha" -> subject
