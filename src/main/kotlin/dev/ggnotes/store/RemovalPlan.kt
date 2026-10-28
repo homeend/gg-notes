@@ -1,5 +1,7 @@
 package dev.ggnotes.store
 
+import dev.ggnotes.items.NoteItem
+
 /**
  * What "Remove from gg store" on a tool-window row asks gg to delete, as the
  * lines of one `gg batch` script. gg owns the store format, so the plugin
@@ -31,6 +33,21 @@ data class RemovalPlan(val kind: Kind, val label: String, val lines: List<String
             RemovalPlan(Kind.THREAD, t.root.address.path + lineSuffix(t.root), listOf(note(t.root.id)))
 
         fun forReply(reply: NoteRecord) = RemovalPlan(Kind.REPLY, reply.summary, listOf(note(reply.id)))
+
+        /** Store items only (null for a session item): each child's lines first, then the item's own. */
+        fun forItem(item: NoteItem): RemovalPlan? {
+            val own: Triple<Kind, String, String> = when (val p = item.payload) {
+                is dev.ggnotes.items.Payload.StoreOverview -> Triple(Kind.OVERVIEW, item.title, overview(p.overview.id))
+                is dev.ggnotes.items.Payload.StoreReview -> Triple(Kind.REVIEW, item.title, note(p.review.id))
+                is dev.ggnotes.items.Payload.StoreThread ->
+                    Triple(Kind.THREAD, p.thread.root.address.path + lineSuffix(p.thread.root), note(p.thread.root.id))
+                else -> return null
+            }
+            return RemovalPlan(own.first, own.second, childLines(item) + own.third)
+        }
+
+        private fun childLines(item: NoteItem): List<String> =
+            item.children.flatMap { c -> forItem(c)?.lines.orEmpty() }
 
         fun forFile(f: FileEntry) = RemovalPlan(Kind.FILE, f.path, threadLines(f.threads))
 

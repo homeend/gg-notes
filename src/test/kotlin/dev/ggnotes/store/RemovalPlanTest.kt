@@ -92,4 +92,39 @@ class RemovalPlanTest {
         val plan = RemovalPlan.forCommit(commit)
         assertEquals(plan.lines.map { it.substringAfterLast(' ') }.toSet(), plan.ids)
     }
+
+    private fun itemTops(): List<dev.ggnotes.items.NoteItem> {
+        val dir = Files.createTempDirectory(tmp.root.toPath(), "items")
+        Files.copy(Paths.get("examples/items/commits.toml"), dir.resolve("commits.toml"))
+        Files.copy(Paths.get("examples/items/previews.toml"), dir.resolve("previews.toml"))
+        Files.createDirectories(dir.resolve("worktrees"))
+        Files.copy(Paths.get("examples/items/worktrees/cc36f09eabab0c81.toml"), dir.resolve("worktrees/cc36f09eabab0c81.toml"))
+        val m = StoreModel.build(StoreReader().read(dir), headSha = "1".repeat(40), subjects = emptyMap())
+        return dev.ggnotes.items.NoteItems.build(m, emptyList(), emptyList())
+    }
+
+    @Test
+    fun `an item goes with its children, children first`() {
+        val tops = itemTops()
+        val o = RemovalPlan.forItem(tops.single { it.id == "store:0v000001" })!!
+        assertEquals(listOf("note rm 0n000001", "note rm 0n000004", "overview rm 0v000001"), o.lines)
+        assertEquals(RemovalPlan.Kind.OVERVIEW, o.kind)
+        val r = RemovalPlan.forItem(tops.single { it.id == "store:0r000001" })!!
+        assertEquals(listOf("note rm 0n000002", "note rm 0r000001"), r.lines)
+        assertEquals(RemovalPlan.Kind.REVIEW, r.kind)
+        val child = tops.single { it.id == "store:0v000001" }.children.first()
+        val t = RemovalPlan.forItem(child)!!
+        assertEquals(listOf("note rm 0n000001"), t.lines)
+        assertEquals(RemovalPlan.Kind.THREAD, t.kind)
+        assertEquals("a.go:3", t.label)
+    }
+
+    @Test
+    fun `a session item has no store plan`() {
+        val text = "path = 'x.go'\nstart = 2\nend = 3\nsummary = 'sn'\nlines = ['l1', 'l2']\n"
+        val doc = (dev.ggnotes.session.SessionDocParser.note("n1", text.toByteArray()) as dev.ggnotes.session.Parsed.Ok).doc
+        val entry = dev.ggnotes.session.DocIndex.Entry(doc, size = 0, mtime = 0, time = 1)
+        val item = dev.ggnotes.items.NoteItems.build(model(), emptyList(), listOf(entry)).single { it.source == dev.ggnotes.items.ItemSource.SESSION_NOTE }
+        org.junit.Assert.assertNull(RemovalPlan.forItem(item))
+    }
 }
