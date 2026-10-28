@@ -277,14 +277,14 @@ class SteerService(private val project: Project) : Disposable {
         sessionChanged()
     }
 
-    /** EDT (the tree's row click): open the note's working file with the note's lines, where they sit now, selected. */
+    /** EDT (the tree's row click): open the note's working file with its lines, where they sit now, selected; focus stays in the tree (its Delete and Ctrl+C are the row's). */
     fun showNote(s: RootSession, entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionNoteDoc>) {
         val doc = entry.doc
         val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(Path.of(s.topLevel, doc.path))
             ?.takeIf { !it.isDirectory } ?: return
         val p = s.marks.placementOf(doc)
         val editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
-            .openTextEditor(com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, (p.start - 1).coerceAtLeast(0), 0), true) ?: return
+            .openTextEditor(com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, (p.start - 1).coerceAtLeast(0), 0), false) ?: return
         val text = editor.document
         if (text.lineCount == 0) return
         val first = p.start.coerceIn(1, text.lineCount)

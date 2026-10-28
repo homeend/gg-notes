@@ -854,6 +854,35 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         assertEquals(1, offered.size)
     }
 
+    /**
+     * A session note row opens the working file with the note's lines selected, without taking the
+     * row's place: no document opens and the list stays (a note opens an editor, not a document).
+     */
+    fun testSelectingASessionNoteRowOpensItsLinesInTheWorkingFile() {
+        val steer = dev.ggnotes.steer.SteerService.getInstance(project)
+        val session = ApplicationManager.getApplication().executeOnPooledThread<List<dev.ggnotes.steer.SteerService.RootSession>> { steer.startSync() }.get().single()
+        Files.createDirectories(session.docsDir)
+        Files.writeString(session.docsDir.resolve("n-1.toml"), "path = 'internal/x/gate.go'\nstart = 4\nend = 4\nsummary = 'Returns the flag.'\nlines = ['\treturn open']\n")
+        steer.reloadDocs()
+        waitFor("the note is indexed") { session.docs.index.notes().size == 1 }
+        withPanel { panel, _ ->
+            waitFor("the note's row") { "Returns the flag." in panel.rowTexts(1) }
+            assertTrue(panel.selectItem("note:n-1"))
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("note:n-1", panel.selectedItemId)
+            val fem = FileEditorManager.getInstance(project)
+            assertEquals("gate.go", fem.selectedFiles.single().name)
+            assertTrue("the working file, not a revision", fem.selectedFiles.single().isInLocalFileSystem)
+            val editor = fem.selectedTextEditor!!
+            val doc = editor.document
+            assertEquals(doc.getLineStartOffset(3), editor.selectionModel.selectionStart)
+            assertEquals(doc.getLineEndOffset(3), editor.selectionModel.selectionEnd)
+            assertNull("a note opens no document", OverviewService.getInstance(project).open)
+            panel.openSelectedFullArea()
+            assertFalse("a note row does not hide the list", OverviewService.getInstance(project).listHidden)
+        }
+    }
+
     /** The View selector: By Date is the default, a pick is remembered in the project's properties. */
     fun testViewSelectorDefaultsToDateAndIsRemembered() {
         val service = OverviewService.getInstance(project)

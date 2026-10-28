@@ -450,6 +450,13 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     /** The selected item's [NoteItem.id] (null for a day, kind, repository or reply row), for tests. */
     internal val selectedItemId: String? get() = (selectedNode?.userObject as? ItemNode)?.item?.id
 
+    /** Select the row of item [id] as a click does (so it opens), for tests; false when no row has it. */
+    internal fun selectItem(id: String): Boolean {
+        val node = TreeUtil.findNode(root) { (it.userObject as? ItemNode)?.item?.id == id } ?: return false
+        TreeUtil.selectNode(tree, node)
+        return true
+    }
+
     /** The tree's context menu, in its order. */
     internal val popupActions: List<AnAction> get() = listOf(copyLink, remove, removeCommit)
 
