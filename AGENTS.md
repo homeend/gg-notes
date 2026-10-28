@@ -193,6 +193,8 @@ or with the installed `gg`. Conformance files in `docs/gg-steer/`: `command.sche
 included), `reanchor-cases.json` (the eight re-anchoring cases),
 `repokey-vectors.json` (the inbox path encoding).
 
+Item rows (plugin 0.6.0, IDE-side extension): `files` lists every item the tool window shows (`store:<id>`, `note:<id>`; PLUGIN.md §5) and `file_focus` takes those ids.
+
 ## 7. Workflow reminders
 
 - Feature branches + worktrees as `CLAUDE.md` says; per-task commits; the

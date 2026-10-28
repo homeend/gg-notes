@@ -351,7 +351,10 @@ Steps:
   `id` and `commit`). The IDE shows the record in the Agent Notes tool
   window, under its commit, branch or PR. Your reply names the id and where
   it shows.
-- **Focus it now** (optional). When the IDE is live (§6's rule), send:
+- **Focus it now** (optional). When the IDE is live (§6's rule), prefer
+  `file_focus` with `"file_id":"store:<record id>"` (§6 recipe). The reply is
+  `focused <source> <id> "<title>"`. If the reply is `no item <id>`, or the
+  plugin is older than 0.6.0, use `navigate` as the fallback. Send:
   `{"id":"<cid>","cmd":"navigate","commit":"<full sha>","hint_kind":"review","hint_id":"<record id>","wait":true}`
   (`"hint_kind":"overview"` for an overview), written the way §6 writes
   `file_focus`: a temp file in `$inbox/ide/`, then a rename to
@@ -426,14 +429,23 @@ Delete only what the user asked you to delete (§8.5 stays).
 Use the live check and the command recipe of §6: the same `cid`, the same
 `mv`, the same reply file, 2 seconds, no retry.
 
-1. Find the id. Send `{"id":"<cid>","cmd":"files","wait":true}` the way §6
-   sends `file_focus`. In the reply, the rows with `"source":"overview"`
-   are the session overviews. Each has `id`, `title` and `created`. Pick
-   the row by its title or its date.
-2. Send `file_focus` with that id (§6).
-3. A store review or overview is not in the `files` reply. Take its id and
-   commit from `"$GG" note list --json` (a review: `id`, `rev`) or
-   `"$GG" overview list --all --json` (an overview: `id`, `commit`), and send the `navigate` command of
-   §9 "Focus it now". Reply `opened review <id>` / `opened overview <id>`.
-   No fresh `ide.json` or no reply: say in one line where it is in the tool
-   window (under its commit, branch or PR).
+1. Send `{"id":"<cid>","cmd":"files","wait":true}` the way §6 sends
+   `file_focus`.
+2. Read the rows in the reply. Pick one row by its `title`, `kind`,
+   `source` or `created`.
+   - `source`: `overview` (a session overview), `store-overview`,
+     `store-review`, `store-thread` (a thread of a review) or
+     `session-note`.
+   - `kind`: `commit`, `branch`, `pull-request`, `file` or `other`.
+3. Send `file_focus` with the `id` of that row. The id is `store:<id>`,
+   `note:<id>` or the id of a session overview.
+4. The reply is `focused <source> <id> "<title>"`.
+5. The reply `no item <id>` means the item is gone. A reply with no row that
+   has a `kind` means the plugin is older than 0.6.0. In both cases, for a
+   store review or overview, use the `navigate` command of §9 "Focus it
+   now". Take its id and commit from `"$GG" note list --json` (a review:
+   `id`, `rev`) or `"$GG" overview list --all --json` (an overview: `id`,
+   `commit`). The reply is `opened review <id>` / `opened overview <id>`.
+6. No fresh `ide.json`, or no reply: say in one line where the item is in
+   the tool window. In By Date, it is under its day. In By Type, it is
+   under its kind, then under its day.
