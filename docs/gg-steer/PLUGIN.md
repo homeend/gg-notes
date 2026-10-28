@@ -134,7 +134,7 @@ notes it links do get rows. Row: `{id, source, kind, title, author, created
 - `id`: `store:<record id>` or `note:<id>`.
 - `source`: `store-overview`, `store-review`, `store-thread` or `session-note`.
 - `kind`: `commit`, `branch`, `pull-request`, `file` or `other`.
-- `path`, `line`: the file and first line of a thread or note; else `""` and `0`.
+- `path`, `line`: the file and first line of a thread or note; else `path` is `""` and `line` is left out (0) when there is no line.
 - `state`: `shown` when the tool window's open document is that record, else `background`. A session note is always `background`.
 - `owner`: `{commit?, branch?, preview?, path?}`, only the keys that have a value.
 

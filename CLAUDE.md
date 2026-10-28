@@ -71,8 +71,9 @@ name freeze on the first Marketplace upload.
   --to ide` target. Pure and unit-tested: `SteerPaths` (gg's EncodeRepoKey
   inbox path, plus `docs/`), `Wire` (command/reply JSON), `Inbox` +
   `Presence` (drain rules, replies, sweep, ide.json), `Lines` (gg's line
-  rule and landed prose), `ItemRows` (the `files` rows of every note item), `Reanchor` (gg's agentdocs rule over a Myers line
-  diff), `SessionMemory` (open files f<n> only) and `SessionAnchors` (the
+  rule and landed prose), `ItemRows` (the `files` rows of every note
+  item), `Reanchor` (gg's agentdocs rule over a Myers line diff),
+  `SessionMemory` (open files f<n> only) and `SessionAnchors` (the
   grammar plus `note:<id>`). IDE: `SteerService` (presence per git root
   from the startup activity, 1 s touch, 500 ms drain + watcher, one worker
   thread, replies only on `wait`), `SteerHandler` (verb by verb, PLUGIN.md
