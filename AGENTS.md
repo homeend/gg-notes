@@ -130,11 +130,12 @@ disk — confirm it with this oracle on Windows before trusting it there.
   (`GitLineHandler` — see CLAUDE.md for the constructor that is stable
   across 242→262), never on the EDT. The working-tree file is only a
   convenience when identical.
-- **Tool window**: a flat list of ITEMS in one of two views (View popup,
-  By Date default, remembered per project). An item has a kind (branch,
-  commit, pull request, file, other), taken from what the note is attached
-  to. By Date: local day, newest first, "No date" last. By Type: Branch,
-  Commit, Pull request, File, Other, then day. A note that a review or an
+- **Tool window**: a flat list of ITEMS in one of two views (the toolbar's
+  View menu, By Date default, remembered per project as `ggnotes.view`).
+  An item has a kind (branch, commit, pull request, file, other), taken
+  from what the note is attached to. By Date: local day, newest first,
+  "No date" last. By Type: Branch, Commit, Pull request, File, Other, then
+  day. A note that a review or an
   overview contains (by its document's file list; a prose review contains
   every note on its commit; a working review its worktree's live notes) is
   that item's child, under ONE parent: review before overview, newest first.

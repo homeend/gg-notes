@@ -2,8 +2,9 @@
 
 Three agent skills for an AI agent that works beside a JetBrains IDE with
 this plugin installed. The agent writes plain files into the worktree's
-session-docs directory; the plugin shows them — overviews in the tool
-window's "Session" group, notes as remark boxes in the editor. The
+session-docs directory; the plugin shows them. The Agent Notes tool
+window lists each overview and each note (By Date view: under today's
+date). The editor shows each note as a remark box. The
 skills need only git and a shell: no other tool, server or process. With a
 usable `gg` (`agent-overview/FILES.md` §0), commit, branch and PR work goes
 into gg's store
@@ -17,8 +18,8 @@ into gg's store
 
 ## Pasting a document back to an agent
 
-In the IDE, **Copy Link** on a "Session" row (or Ctrl+C) and **Copy Session
-Note Link** on a note box copy one line that names the document, its
+In the IDE, **Copy Link** on a session overview row or a session note row
+(or Ctrl+C) and **Copy Session Note Link** on a note box copy one line that names the document, its
 worktree and its file. Paste it to an agent with what you want ("fix
 this"); the skills read the file it names (`agent-overview/FILES.md` §8).
 

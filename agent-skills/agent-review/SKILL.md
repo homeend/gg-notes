@@ -9,8 +9,8 @@ argument-hint: "[commit | branch | working] [what to focus on]"
 Review one change and write it as files the IDE shows: one **note** per
 remark, on the exact lines, and one **overview** that is the review itself —
 summary, findings (each one a link to its remark), verdict. The user opens
-the review in the IDE's Agent Notes tool window ("Session" group) and walks the
-findings.
+the review in the IDE's Agent Notes tool window (By Date view: under today's
+date) and walks the findings.
 
 **How to write the files is in the agent-overview skill's FILES.md
 (`../agent-overview/FILES.md`, installed beside this skill) — read it first.**

@@ -19,7 +19,7 @@ With the project open, an agent in a terminal can say:
 | `gg session highlight add src/a.go:3-4 --tone warn --to ide` | a persistent gutter/background marker on 3–4 |
 | `gg session note add src/a.go:3-4 --summary "…" --rationale "…"` | gg writes `<id>.toml` into the worktree's session docs directory (§5); the IDE shows a read-only remark box beside lines 3–4 (same overlay the overview remarks use) |
 | `gg session files --to ide` | the open-files list with ids `f<n>`, then the session overviews under their document ids |
-| `gg session overview add --title "Tour" --file tour.md` | gg writes `<id>.md` into the session docs directory; the overview is a row of the tool window's **Session** group and opens there (gg steers a `file_focus` for the id when a window is live) |
+| `gg session overview add --title "Tour" --file tour.md` | gg writes `<id>.md` into the session docs directory; the overview is an item of the tool window (kind Other, under its day in By Date) and opens there (gg steers a `file_focus` for the id when a window is live) |
 | `gg session status` | an `ide: pid …` line (the plugin is live) |
 
 Open files and highlights are the session's; closing the project forgets
@@ -176,14 +176,23 @@ next_note|prev_note` walks these placements.
 
 ### 5.3 What the tool window shows
 
-The **Session** group above the commits lists the overview files newest
-first by `created` (the file's mtime when absent), then id: title ·
-author · age · `N anchors`, `on screen` while the viewer shows it, `⚠ N
-unresolved` for anchors whose file is not in the worktree or whose note is
-not in the directory (re-checked on every rebuild). Opening one is the
-overview viewer: anchors are live (the working tree), a `note:<id>` anchor
-points at the note's lines now, an unresolved anchor is plain text. gg's
-tours (`tour-brief-…`, `tour-report-…`, author `gg`) are ordinary rows.
+The tool window lists each overview file as an item of kind Other and
+each note file as an item of kind File, beside the store's items; a note
+that an overview links by `note:<id>` is that overview's child (the newest
+overview when several link it). Their time is `created` (the file's mtime
+when absent): By Date puts them under that local day, newest first, then
+id; By Type under Other and File.
+
+An overview row: title · `session` · author · time, `on screen` while the
+viewer shows it, `⚠ N unresolved` for anchors whose file is not in the
+worktree or whose note is not in the directory (re-checked on every
+rebuild). Opening one is the overview viewer: anchors are live (the
+working tree), a `note:<id>` anchor points at the note's lines now, an
+unresolved anchor is plain text. gg's tours (`tour-brief-…`,
+`tour-report-…`, author `gg`) are ordinary rows. A note row: summary ·
+path:lines · author · time; a click opens the working file with the
+note's lines selected. Copy Link (or Ctrl+C) on either row copies its
+link line.
 
 **Close vs delete.** Close (the toolbar's X, another row) is local: the
 file and the row stay. **Delete** on a session row confirms, then unlinks
@@ -204,7 +213,7 @@ listing, reconcile), `DocFolder` per root on `SteerService.RootSession`,
 `SessionNoteMarks`, the delete actions. A gg older than the contract that
 sends a retired verb gets the refusal of §4 and the IDE shows one notice
 per root naming the directory it reads instead; with no `docs/` directory
-the Session group is simply absent.
+the tool window simply lists no session items.
 
 ## 6. Threading and failure rules
 

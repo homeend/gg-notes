@@ -36,7 +36,8 @@ name freeze on the first Marketplace upload.
   file's threads as the document the viewer shows), `MarkdownRenderer`,
   `LinkClassifier`. `dev.ggnotes.items` is pure too: `NoteItems` (top items
   from the RepoModel and the session docs, each contained note a child of
-  ONE parent), `ItemViews` (By Date / By Type, owner labels) and
+  ONE parent), `ItemViews` (By Date / By Type, owner labels; the view is
+  remembered per project in the property `ggnotes.view`) and
   `SessionRemoval`; `RemovalPlan.forItem` deletes an item's children first.
   `dev.ggnotes.git` wraps git4idea; `dev.ggnotes.overview`
   is the service, tool window, document pane, navigation, overlays, banner.
