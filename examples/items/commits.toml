@@ -1,0 +1,272 @@
+format = 3
+
+[[notes]]
+id = '0v000001'
+source = 'agent'
+author = 'ada'
+side = 'new'
+range = [0, 0]
+context_hash = ''
+summary = 'C1 overview'
+rationale = '''{
+  "version": 1,
+  "title": "C1 overview",
+  "overview": "See [it](a.go:1).",
+  "files": [
+    {
+      "path": "a.go",
+      "annotations": [
+        {
+          "newRange": [
+            1,
+            1
+          ],
+          "summary": "here"
+        }
+      ]
+    }
+  ]
+}'''
+tags = ['overview']
+created = 2026-10-01T08:00:00Z
+updated = 2026-10-01T09:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = 'main'
+Commit = '1111111111111111111111111111111111111111'
+ShelfID = ''
+Path = ''
+State = 0
+
+[[notes]]
+id = '0r000001'
+source = 'agent'
+author = 'ada'
+side = 'new'
+range = [0, 0]
+context_hash = ''
+summary = 'C1 review'
+rationale = '''{
+  "version": 1,
+  "summary": "C1 review",
+  "files": [
+    {
+      "path": "b.go",
+      "annotations": [
+        {
+          "newRange": [
+            1,
+            1
+          ],
+          "summary": "remark"
+        }
+      ]
+    }
+  ]
+}'''
+tags = ['review']
+scope = '1111111111111111111111111111111111111111^..1111111111111111111111111111111111111111'
+created = 2026-10-02T08:00:00Z
+updated = 2026-10-02T09:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '1111111111111111111111111111111111111111'
+ShelfID = ''
+Path = ''
+State = 0
+
+[[notes]]
+id = '0r000002'
+source = 'agent'
+author = 'ada'
+side = 'new'
+range = [0, 0]
+context_hash = ''
+summary = 'Branch review'
+rationale = '''{
+  "version": 1,
+  "summary": "Branch review",
+  "files": [
+    {
+      "path": "f.go",
+      "annotations": [
+        {
+          "newRange": [
+            1,
+            1
+          ],
+          "summary": "remark"
+        }
+      ]
+    }
+  ]
+}'''
+tags = ['review']
+scope = 'main..2222222222222222222222222222222222222222'
+created = 2026-10-03T08:00:00Z
+updated = 2026-10-03T09:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = 'feat/x'
+Commit = '2222222222222222222222222222222222222222'
+ShelfID = ''
+Path = ''
+State = 0
+
+[[notes]]
+id = '0r000003'
+source = 'agent'
+author = 'ada'
+side = 'new'
+range = [0, 0]
+context_hash = ''
+summary = 'Prose review'
+rationale = '''Looks fine. No document here.'''
+tags = ['review']
+scope = '2222222222222222222222222222222222222222^..2222222222222222222222222222222222222222'
+created = 2026-10-04T08:00:00Z
+updated = 2026-10-04T09:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '2222222222222222222222222222222222222222'
+ShelfID = ''
+Path = ''
+State = 0
+
+[[notes]]
+id = '0n000001'
+source = 'user'
+author = 'me'
+side = 'new'
+range = [3, 3]
+context_hash = ''
+summary = 'note a3'
+created = 2026-10-05T08:00:00Z
+updated = 2026-10-05T08:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '1111111111111111111111111111111111111111'
+ShelfID = ''
+Path = 'a.go'
+State = 0
+
+[[notes]]
+id = '0n000002'
+source = 'user'
+author = 'me'
+side = 'new'
+range = [5, 5]
+context_hash = ''
+summary = 'note b5'
+created = 2026-10-06T08:00:00Z
+updated = 2026-10-06T08:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '1111111111111111111111111111111111111111'
+ShelfID = ''
+Path = 'b.go'
+State = 0
+
+[[notes]]
+id = '0n000003'
+source = 'user'
+author = 'me'
+side = 'new'
+range = [7, 7]
+context_hash = ''
+summary = 'note c7'
+created = 2026-10-07T08:00:00Z
+updated = 2026-10-07T08:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '1111111111111111111111111111111111111111'
+ShelfID = ''
+Path = 'c.go'
+State = 0
+
+[[notes]]
+id = '0n000004'
+source = 'user'
+author = 'me'
+side = 'new'
+range = [9, 9]
+context_hash = ''
+summary = 'note a9'
+created = 2026-10-08T08:00:00Z
+updated = 2026-10-08T08:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '1111111111111111111111111111111111111111'
+ShelfID = ''
+Path = 'a.go'
+State = 0
+
+[[notes]]
+id = '0n000005'
+parent_id = '0n000004'
+source = 'agent'
+author = 'ada'
+side = 'new'
+range = [9, 9]
+context_hash = ''
+summary = 'reply to a9'
+created = 2026-10-08T09:00:00Z
+updated = 2026-10-08T09:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '1111111111111111111111111111111111111111'
+ShelfID = ''
+Path = 'a.go'
+State = 0
+
+[[notes]]
+id = '0n000006'
+source = 'user'
+author = 'me'
+side = 'new'
+range = [1, 1]
+context_hash = ''
+summary = 'note d1'
+created = 2026-10-09T08:00:00Z
+updated = 2026-10-09T08:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '2222222222222222222222222222222222222222'
+ShelfID = ''
+Path = 'd.go'
+State = 0
+
+[[notes]]
+id = '0n000007'
+source = 'user'
+author = 'me'
+side = 'new'
+range = [2, 2]
+context_hash = ''
+summary = 'note e2 undated'
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '1111111111111111111111111111111111111111'
+ShelfID = ''
+Path = 'e.go'
+State = 0

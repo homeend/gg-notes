@@ -1,0 +1,41 @@
+format = 3
+
+[[notes]]
+id = '0v000002'
+source = 'agent'
+author = 'ada'
+side = 'new'
+range = [0, 0]
+context_hash = ''
+summary = 'PR 7 overview'
+rationale = '''{
+  "version": 1,
+  "title": "PR 7 overview",
+  "overview": "See [it](p.go:1).",
+  "files": [
+    {
+      "path": "p.go",
+      "annotations": [
+        {
+          "newRange": [
+            1,
+            1
+          ],
+          "summary": "here"
+        }
+      ]
+    }
+  ]
+}'''
+tags = ['overview']
+preview = 'main...refs/gg/pr/7'
+created = 2026-10-10T08:00:00Z
+updated = 2026-10-10T09:00:00Z
+
+[notes.address]
+Worktree = ''
+Branch = ''
+Commit = '3333333333333333333333333333333333333333'
+ShelfID = ''
+Path = ''
+State = 0
