@@ -289,9 +289,10 @@ directory (a `/mnt/<letter>/…` worktree: interop passes it as a Windows
 path), and give every file argument as a Windows path:
 `--file "$(wslpath -w overview.json)"`. Pipe stdin as usual.
 
-- **Target link.** A commit: `"$GG" link <rev>` (`HEAD` is the default). A
-  PR: `"$GG" link --pr <n>`. A branch: `"$GG" link <branch>`. Each prints
-  one `gg://…` link. Keep it as `$link`.
+- **Target link.** A commit: `"$GG" link --rev <rev>` (`--rev HEAD`). A
+  PR: `"$GG" link --pr <n>`. A branch: `"$GG" link --ref <branch>`. Each
+  prints one `gg://…` link. Never give a bare `<rev>`: gg reads it as a file
+  of the working tree, and the link is then "working changes". Keep it as `$link`.
 - **Review.** First read what to review:
   `"$GG" review save "$link" --dry-run --json`. It prints `kind`, `label`,
   `checkout`, `diff` and `hunks`. Read the change with these values. The
@@ -320,7 +321,7 @@ path), and give every file argument as a Windows path:
 sh:
 
 ```sh
-link=$("$GG" link HEAD)
+link=$("$GG" link --rev HEAD)
 "$GG" review save "$link" --dry-run --json
 "$GG" review save "$link" --agent "claude" --stdin --json < review.json
 "$GG" overview save "$link" --agent "claude" --file overview.json --json
@@ -330,7 +331,7 @@ link=$("$GG" link HEAD)
 PowerShell:
 
 ```powershell
-$link = & $GG link HEAD
+$link = & $GG link --rev HEAD
 & $GG review save $link --dry-run --json
 Get-Content -Raw review.json | & $GG review save $link --agent 'claude' --stdin --json
 & $GG overview save $link --agent 'claude' --file overview.json --json
