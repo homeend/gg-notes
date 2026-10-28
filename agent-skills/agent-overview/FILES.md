@@ -31,10 +31,17 @@ if ($env:GG_SESSION_ID) { 'inside gg' }
 - Else you run outside gg (IDE terminal, AI Assistant, Air). Find the `gg`
   binary on the IDE's side:
 
+The IDE is on Windows when you run in WSL (`$WSL_DISTRO_NAME` is set) AND
+the worktree is on a Windows drive (`/mnt/<letter>/…`), or the user says the
+IDE runs on Windows. This is the same decision as §2 (the same side), so the
+two never disagree. Then use `gg.exe`; otherwise use `gg`.
+
 ```sh
-GG=$(command -v gg)
-# WSL, IDE on Windows: the Windows binary
-GG=$(command -v gg.exe)
+if [ -n "$WSL_DISTRO_NAME" ] && case "$PWD" in /mnt/[a-z]/*) true;; *) false;; esac; then
+  GG=$(command -v gg.exe)   # IDE on Windows (or the user says so)
+else
+  GG=$(command -v gg)
+fi
 ```
 
 ```powershell
@@ -277,6 +284,10 @@ Use this route only when §0 says so. `gg` stores the record in its own
 store. Never write, edit or delete a file under `<state>/gg/notes/`: only
 the `gg` CLI touches the store. All commands run in the worktree. In the
 examples below `$GG` is the binary from §0 (PowerShell: `& $GG …`).
+**With `gg.exe` from WSL:** run it with the worktree as the current
+directory (a `/mnt/<letter>/…` worktree: interop passes it as a Windows
+path), and give every file argument as a Windows path:
+`--file "$(wslpath -w overview.json)"`. Pipe stdin as usual.
 
 - **Target link.** A commit: `"$GG" link <rev>` (`HEAD` is the default). A
   PR: `"$GG" link --pr <n>`. A branch: `"$GG" link <branch>`. Each prints
@@ -311,7 +322,9 @@ sh:
 ```sh
 link=$("$GG" link HEAD)
 "$GG" review save "$link" --dry-run --json
+"$GG" review save "$link" --agent "claude" --stdin --json < review.json
 "$GG" overview save "$link" --agent "claude" --file overview.json --json
+"$GG" note add --file src/app.go --new-line 42 --rev "$sha" --summary "…"
 ```
 
 PowerShell:
@@ -319,15 +332,21 @@ PowerShell:
 ```powershell
 $link = & $GG link HEAD
 & $GG review save $link --dry-run --json
+Get-Content -Raw review.json | & $GG review save $link --agent 'claude' --stdin --json
 & $GG overview save $link --agent 'claude' --file overview.json --json
+& $GG note add --file src/app.go --new-line 42 --rev $sha --summary '…'
 ```
+
+With `gg.exe` from WSL, write `--file "$(wslpath -w overview.json)"`.
 
 ## 10. Delete
 
 Delete only what the user asked you to delete (§8.5 stays).
 
 - **A session doc** (§1–§7 files): delete its file. The IDE drops it.
-  sh: `rm "$docs/<id>.md"` (a note: `<id>.toml`).
+  sh: `rm "$docs/<id>.md"` (a note: `<id>.toml`). From WSL with the IDE on
+  Windows, `$docs` is the Linux path of the Windows directory from §2,
+  unchanged.
   PowerShell: `Remove-Item (Join-Path $docs '<id>.md')`.
 - **A store record**: use the CLI, in the worktree. `"$GG" note rm <id>`
   removes a note, a thread with its replies, or a review. `"$GG" overview rm
