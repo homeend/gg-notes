@@ -4,7 +4,10 @@ Three agent skills for an AI agent that works beside a JetBrains IDE with
 this plugin installed. The agent writes plain files into the worktree's
 session-docs directory; the plugin shows them — overviews in the tool
 window's "Session" group, notes as remark boxes in the editor. The
-skills need only git and a shell: no other tool, server or process.
+skills need only git and a shell: no other tool, server or process. With a
+usable `gg` (`agent-overview/FILES.md` §0), commit, branch and PR work goes
+into gg's store
+(`agent-overview/FILES.md` §9) instead.
 
 | skill | what the agent does |
 |---|---|
@@ -35,7 +38,11 @@ instructions file at each `SKILL.md`.
 ## Limits
 
 - Notes and anchors point at files as they are on disk in the worktree
-  the IDE shows. To present or review another commit, check it out first.
+  the IDE shows. On the files route, to present or review another commit,
+  check it out first. With a usable `gg`, a REVIEW of a commit, a branch or a
+  PR needs no checkout; an OVERVIEW needs its commit checked out.
+- An agent in WSL whose IDE runs on Windows calls `gg.exe`, not `gg`
+  (`FILES.md` §0).
 - The agent and the IDE must use the same OS side: an agent in WSL with
   the IDE on Windows writes into the Windows directory (`FILES.md` §2).
 - The file format is `docs/gg-session-docs/SPEC.md` in this repository.

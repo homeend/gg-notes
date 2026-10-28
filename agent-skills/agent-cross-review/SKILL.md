@@ -1,6 +1,6 @@
 ---
 name: agent-cross-review
-description: Use when the user asks for a cross-review — 2 or 3 reviewers on different models review one change, you settle their disagreements and show one merged review in their JetBrains IDE with the AgentNotes plugin.
+description: Use when the user asks for a cross-review — 2 or 3 reviewers on different models review one change, you settle their disagreements and show one merged review in their JetBrains IDE with the AgentNotes plugin — works with or without gg.
 argument-hint: "[commit | branch | working] [2|3] [what to focus on]"
 ---
 
@@ -16,6 +16,12 @@ one note per remark and one overview that is the review.
 (`../agent-review/SKILL.md`), both installed beside this skill — read both
 first.**
 
+**First run FILES.md §0:** inside gg → stop and use the gg skills; outside gg,
+never ask the user to start gg or to set anything.
+
+The merged review is stored by agent-review's route: in gg when FILES.md §0
+says so (§9), else as files.
+
 **Wording.** Write every text the user reads — the merged summary, the
 remarks, your rulings, your reply — in ASD-STE100 (80% compatibility when
 possible): short sentences, active voice, one meaning per word, no idioms.
@@ -24,8 +30,9 @@ reviewer the same rule.
 
 ## Steps
 
-1. **What is reviewed** — agent-review step 1: the reviewed version must be
-   checked out in the worktree the IDE shows; otherwise ask and stop. Work
+1. **What is reviewed** — agent-review step 1: on the files route the
+   reviewed version must be checked out in the worktree the IDE shows;
+   otherwise ask and stop. Work
    out the range and the base (agent-review step 2) once; every reviewer
    gets the same values.
 2. **How many.** The number the user gave. Missing, or not 2 or 3 → ask:
@@ -45,7 +52,9 @@ reviewer the same rule.
    > <range>`), the old code of changed functions (`git show
    > <base>:<path>`) and the callers of every changed name. <Focus: look
    > hardest at … and list it first.> Do not modify any file. Write in
-   > ASD-STE100. Your final message is ONLY this JSON, no prose:
+   > ASD-STE100. (Store route, FILES.md §9: give "start" and "end" as lines of
+   > `git show <rev>:<path>`, the file at the reviewed commit, not the file as
+   > it is now.) Your final message is ONLY this JSON, no prose:
    > `{"summary": "<before → after, 1–3 sentences>", "verdict": "approve |
    > comment | request changes", "findings": [{"path": "<worktree-relative
    > path>", "start": <first line in the file as it is now>, "end": <last
@@ -59,14 +68,23 @@ reviewer the same rule.
    not return the JSON is a failed reviewer: keep its error for the
    summary. None succeeded → report the errors and stop.
 5. **Merge** — see **Merging** below.
-6. **Write the files** (FILES.md): one note per kept remark, then one
-   overview, `title = "Cross-review: <what was reviewed>"`, `author =
-   "<you> — cross-review (<model1>, <model2>[, <model3>])"`. A walkthrough
-   only when the user asked for one (agent-review step 5), written by YOU.
-7. **Check** (FILES.md §7), then **show it** (FILES.md §6, optional).
+6. **Write the review.** Files route (FILES.md §1–§7): one note per kept
+   remark, then one overview, `title = "Cross-review: <what was reviewed>"`,
+   `author = "<you> — cross-review (<model1>, <model2>[, <model3>])"`. Store
+   route (FILES.md §9): write ONE gg review document, saved with `--agent
+   "<you> — cross-review (<model1>, <model2>[, <model3>])"`. Each kept remark
+   is a `files[].annotations` entry with `meta` (`raised_by`, `ruling`, and
+   the other keys of **Merging**); the sections `## Disagreements resolved`
+   and `## Reviewers` go into `summary`. A walkthrough only when the user
+   asked for one (agent-review step 5), written by YOU.
+7. **Check** (FILES.md §7), then **show it** (FILES.md §6, optional). On the
+   store route, §7 and §6 do not apply: the check is gg's output
+   (`unresolved:` and refusals; FILES.md §9); show it with FILES.md §9
+   "Focus it now".
 8. **Reply** with the verdict first, each reviewer and its verdict, how
    many findings were agreed, how many disputed and how you ruled, the
-   review's id and the directory. Do not paste the review into the chat.
+   review's id and the directory (store route: the record id and where it
+   shows in the tool window, FILES.md §9). Do not paste the review into the chat.
 
 ## Merging
 
@@ -106,6 +124,9 @@ lines apart in the same function) and they describe the same problem.
   change without a migration is a finding; when no reviewer raised it,
   `raised_by` = your own name.
 
+On the store route the notes are `files[].annotations` of the one review
+document, and the overview's body below is its `summary`.
+
 Every note's meta also carries `kind`, `severity`, `intent` and
 `confidence` (agent-review step 3).
 
@@ -128,4 +149,7 @@ When the user pastes a link copied in the IDE (`Agent Notes note …` from a
 remark, `Agent Notes overview …` from a review), follow
 `../agent-overview/FILES.md` §8: read the file it names and act on that
 remark or review — for example fix what the remark names.
+
+**Delete.** Only when the user asks: FILES.md §10.
+**Show an existing one.** FILES.md §11.
 

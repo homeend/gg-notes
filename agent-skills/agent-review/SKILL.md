@@ -1,6 +1,6 @@
 ---
 name: agent-review
-description: Use when the user asks you to review a change (a commit, a branch or uncommitted work) and show the review in their JetBrains IDE with the AgentNotes plugin — remarks on the exact lines plus a summary with findings and a verdict.
+description: Use when the user asks you to review a change (a commit, a branch or uncommitted work) and show the review in their JetBrains IDE with the AgentNotes plugin — remarks on the exact lines plus a summary with findings and a verdict — works with or without gg.
 argument-hint: "[commit | branch | working] [what to focus on]"
 ---
 
@@ -14,8 +14,16 @@ findings.
 
 **How to write the files is in the agent-overview skill's FILES.md
 (`../agent-overview/FILES.md`, installed beside this skill) — read it first.**
-It also says the rule that shapes every review here: a note and an anchor
-point at files AS THEY ARE ON DISK in the worktree the IDE shows.
+It also says the rule that shapes a review on the files route: a note and an
+anchor point at files AS THEY ARE ON DISK in the worktree the IDE shows. On
+the store route (FILES.md §9) the lines are the file at the reviewed commit.
+
+**First run FILES.md §0:** inside gg → stop and use the gg skills; outside gg,
+never ask the user to start gg or to set anything.
+
+**Two routes** (FILES.md §0). With usable gg, a review of a commit, a
+branch or a PR is stored in gg (FILES.md §9). Every other review is written
+as files (FILES.md §1–§7).
 
 **Wording.** Write every text the user reads — the summary, the remarks,
 your reply — in ASD-STE100 (80% compatibility when possible): short
@@ -26,11 +34,13 @@ commands and identifiers stay exactly as they are.
 
 1. **What is reviewed.** The user names a commit, a branch or the working
    changes; nothing named = the current branch against its trunk, or the
-   uncommitted changes when the branch is the trunk. The reviewed version
-   must be checked out: a branch at its tip, a commit as HEAD, working
-   changes as they are. When it is not, ask the user to check it out (or
-   to open the IDE on a worktree at that tip) and stop. Do not change the
-   checkout yourself.
+   uncommitted changes when the branch is the trunk. On the files route
+   the reviewed version must be checked out: a branch at its tip, a commit
+   as HEAD, working changes as they are. When it is not, ask the user to
+   check it out (or to open the IDE on a worktree at that tip) and stop.
+   Do not change the checkout yourself. With usable gg, a commit, a branch
+   or a PR needs no checkout: review it through FILES.md §9, checked out or
+   not.
 2. **Read it**, with git, in the worktree. Read in this order:
    - **The range.** A commit: `git show --stat <sha>`; its range is
      `<sha>^..<sha>`, its base `<sha>^`. A branch: the trunk
@@ -50,9 +60,10 @@ commands and identifiers stay exactly as they are.
      not touch — a bug often sits at that boundary.
    - **Mechanical files.** Note renames, formatting-only edits and
      generated files. Do not annotate them.
-3. **The remarks** — one note file each (FILES.md §4), on the lines of the
-   file as it is now. Annotate what a reader would not spot; never a
-   remark per hunk. A removed line has no place on disk: put that finding
+3. **The remarks** — on the store route they are part of the one gg review
+   document (FILES.md §9). On the files route: one note file each
+   (FILES.md §4), on the lines of the file as it is now. Annotate what a reader would not spot; never a
+   remark per hunk. A removed line has no place in the new file: put that finding
    on the nearest new line that replaced it, or only in the summary.
    Every note carries `[[meta]]`:
    - `kind` — `issue` (wrong now), `suggestion` (fine now, could be
@@ -65,8 +76,11 @@ commands and identifiers stay exactly as they are.
 
    `summary` is the finding in one sentence; `rationale` says why it
    matters and how it fails.
-4. **The review** — one overview file (FILES.md §5), `title = "Review:
-   <what was reviewed>"`, the body exactly:
+4. **The review** — on the store route it is the same gg review document as
+   the remarks (FILES.md §9): no note files, no overview file; its `summary`
+   keeps the sections below and the contracts rule. On the files route: one
+   overview file (FILES.md §5), `title = "Review: <what was reviewed>"`.
+   The body, exactly:
    - `## Summary` — 1–3 sentences: **before → after** (what the code did,
      what it does now). When there are mechanical files, end with one line
      `Mechanical: <files>`.
@@ -83,13 +97,20 @@ commands and identifiers stay exactly as they are.
 
    Write each link bare — backticks around a link make it plain text.
 5. **A walkthrough (only when asked).** When the user says "overview",
-   "tour" or "walk me through", add a second overview file, written by
+   "tour" or "walk me through", add a walkthrough, written by
    the agent-overview skill's "What the overview says" (its sections, scaled
-   to the change). The review stays the judgement; the walkthrough only
+   to the change). Files route: a second overview file. Store route: the
+   walkthrough goes in the review document's "overview" key, as the file
+   that `"$GG" skill path review` prints describes. The review stays the judgement; the walkthrough only
    explains. Otherwise write no walkthrough.
 6. **Check** (FILES.md §7), then **show it** (FILES.md §6, optional).
+   On the store route, §7 and §6 do not apply: the check is the save's
+   `unresolved:` and refusal output (FILES.md §9); show it with FILES.md §9
+   "Focus it now".
 7. **Reply** with the verdict first, the review's title and id, the
-   directory, and a three-line summary. Do not paste the review into the
+   directory, and a three-line summary. On the store route, give the record
+   id and where it shows in the tool window (FILES.md §9) in place of the
+   directory. Do not paste the review into the
    chat — it is in the IDE.
 
 A question about ONE file or line ("what does this function do?", "is this
@@ -100,4 +121,7 @@ When the user pastes a link copied in the IDE (`Agent Notes note …` from a
 remark, `Agent Notes overview …` from a review), follow
 `../agent-overview/FILES.md` §8: read the file it names and act on that
 remark or review — for example fix what the remark names.
+
+**Delete.** Only when the user asks: FILES.md §10.
+**Show an existing one.** FILES.md §11.
 
