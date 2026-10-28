@@ -69,4 +69,15 @@ class WireTest {
         assertEquals("2026-10-18T14:32:01Z", op.get("created").asString)
         assertEquals(3, op.get("anchors").asInt)
     }
+
+    @Test
+    fun `an item row carries kind and owner with only the set keys`() {
+        val row = OpenFileWire("store:0n1", "a.go", "store-thread", "t", null, 3, "background", 0, kind = "file", owner = OwnerWire(commit = "abc", path = "a.go"))
+        val o = JsonParser.parseString(Wire.toJson(Reply.ok("1-6", "").copy(files = listOf(row)))).asJsonObject.getAsJsonArray("files")[0].asJsonObject
+        assertEquals("file", o.get("kind").asString)
+        assertEquals(setOf("commit", "path"), o.getAsJsonObject("owner").keySet())
+        val old = JsonParser.parseString(Wire.toJson(Reply.ok("1-7", "").copy(files = listOf(OpenFileWire("f1", "a.go", "worktree", null, null, 0, "background", 0))))).asJsonObject.getAsJsonArray("files")[0].asJsonObject
+        assertFalse(old.has("kind"))
+        assertFalse(old.has("owner"))
+    }
 }

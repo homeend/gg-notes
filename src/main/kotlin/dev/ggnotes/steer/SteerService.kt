@@ -277,8 +277,12 @@ class SteerService(private val project: Project) : Disposable {
         sessionChanged()
     }
 
-    /** EDT (the tree's row click): open the note's working file with its lines, where they sit now, selected; focus stays in the tree (its Delete and Ctrl+C are the row's). */
-    fun showNote(s: RootSession, entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionNoteDoc>) {
+    /**
+     * EDT: open the note's working file with its lines, where they sit now, selected. The tree's row
+     * click keeps focus in the tree (its Delete and Ctrl+C are the row's); [focus] gives it to the
+     * editor (`file_focus`: the agent asked to bring the note to the front).
+     */
+    fun showNote(s: RootSession, entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionNoteDoc>, focus: Boolean = false) {
         val doc = entry.doc
         // the VFS already knows a worktree file: refresh (file work on the EDT) only when it does not
         val nio = Path.of(s.topLevel, doc.path)
@@ -286,7 +290,7 @@ class SteerService(private val project: Project) : Disposable {
         val vf = (lfs.findFileByNioFile(nio) ?: lfs.refreshAndFindFileByNioFile(nio))?.takeIf { !it.isDirectory } ?: return
         val p = s.marks.placementOf(doc)
         val editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
-            .openTextEditor(com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, (p.start - 1).coerceAtLeast(0), 0), false) ?: return
+            .openTextEditor(com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, (p.start - 1).coerceAtLeast(0), 0), focus) ?: return
         val text = editor.document
         if (text.lineCount == 0) return
         val first = p.start.coerceIn(1, text.lineCount)

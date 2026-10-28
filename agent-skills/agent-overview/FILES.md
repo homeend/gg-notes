@@ -351,16 +351,27 @@ Steps:
   `id` and `commit`). The IDE shows the record in the Agent Notes tool
   window, under its commit, branch or PR. Your reply names the id and where
   it shows.
-- **Focus it now** (optional). When the IDE is live (§6's rule), send:
-  `{"id":"<cid>","cmd":"navigate","commit":"<full sha>","hint_kind":"review","hint_id":"<record id>","wait":true}`
-  (`"hint_kind":"overview"` for an overview), written the way §6 writes
-  `file_focus`: a temp file in `$inbox/ide/`, then a rename to
-  `cmd-<cid>.json`. `commit` is the full sha you linked (the `commit` of an
-  overview's output; for a branch review the tip, `git rev-parse <branch>`).
-  The reply is `opened review <id>` / `opened overview <id>`. An id the store
-  no longer has opens the commit. No fresh `ide.json`, no reply in 2
-  seconds, or a PR review (no commit to name): say in one line where the
-  record shows, and go on. Never retry.
+- **Focus it now** (optional). The IDE must be live (§6's rule). Send
+  `file_focus` first. Use `navigate` as the fallback.
+  - Plugin version. Read `plugin` in `$inbox/ide.json`. Compare only the
+    `MAJOR.MINOR` before any `+`. `dev` counts as new. A version older than
+    0.6.0 (for example `0.5.2+abc1234`): skip "Send first" and use
+    "Fallback".
+  - Send first: `{"id":"<cid>","cmd":"file_focus","file_id":"store:<record id>","wait":true}`,
+    sent as §6 sends it. The reply is `focused <source> <id> "<title>"`.
+  - A failed reply has `"ok":false` and an `error` text. Use "Fallback"
+    when `error` is `no item <id>` or starts with `no open file`. A plugin
+    older than 0.6.0 sends `no open file store:<record id>`.
+  - Fallback: `{"id":"<cid>","cmd":"navigate","commit":"<full sha>","hint_kind":"review","hint_id":"<record id>","wait":true}`
+    (`"hint_kind":"overview"` for an overview). Write it the way §6 writes
+    `file_focus`: a temp file in `$inbox/ide/`, then a rename to
+    `cmd-<cid>.json`. `commit` is the full sha you linked (the `commit` of
+    an overview's output; for a branch review the tip, `git rev-parse
+    <branch>`). The reply is `opened review <id>` / `opened overview <id>`.
+    An id the store no longer has opens the commit.
+  - No fresh `ide.json`, no reply in 2 seconds, or a PR review (no commit
+    to name): say in one line where the record shows, and go on. Never
+    retry.
 - The store is permanent. Every worktree of the repo shares it. gg's expiry
   rules apply.
 
@@ -395,7 +406,16 @@ Remove-Item $f
 & $GG note add --file src/app.go --new-line 42 --rev $sha --summary '…' --author 'claude' --json
 ```
 
-Focus (PowerShell; `$inbox` from §2, `$id` = the record id, `$full` = the full sha):
+Focus (PowerShell; `$inbox` from §2, `$id` = the record id, `$full` = the full sha). Send first:
+
+```powershell
+$cid = "$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())-$PID"
+$cmd = '{"id":"' + $cid + '","cmd":"file_focus","file_id":"store:' + $id + '","wait":true}'
+[IO.File]::WriteAllText("$inbox\ide\.$cid.tmp", $cmd)
+Move-Item "$inbox\ide\.$cid.tmp" "$inbox\ide\cmd-$cid.json"
+```
+
+Fallback:
 
 ```powershell
 $cid = "$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())-$PID"
@@ -426,14 +446,27 @@ Delete only what the user asked you to delete (§8.5 stays).
 Use the live check and the command recipe of §6: the same `cid`, the same
 `mv`, the same reply file, 2 seconds, no retry.
 
-1. Find the id. Send `{"id":"<cid>","cmd":"files","wait":true}` the way §6
-   sends `file_focus`. In the reply, the rows with `"source":"overview"`
-   are the session overviews. Each has `id`, `title` and `created`. Pick
-   the row by its title or its date.
-2. Send `file_focus` with that id (§6).
-3. A store review or overview is not in the `files` reply. Take its id and
-   commit from `"$GG" note list --json` (a review: `id`, `rev`) or
-   `"$GG" overview list --all --json` (an overview: `id`, `commit`), and send the `navigate` command of
-   §9 "Focus it now". Reply `opened review <id>` / `opened overview <id>`.
-   No fresh `ide.json` or no reply: say in one line where it is in the tool
-   window (under its commit, branch or PR).
+1. Send `{"id":"<cid>","cmd":"files","wait":true}` the way §6 sends
+   `file_focus`.
+2. Read the rows in the reply. If no row has a `kind`, the plugin is older
+   than 0.6.0: go to step 5. Else pick one row by its `title`, `kind`,
+   `source` or `created`.
+   - `source`: `overview` (a session overview), `store-overview`,
+     `store-review`, `store-thread` (a thread of a review) or
+     `session-note`.
+   - `kind`: `commit`, `branch`, `pull-request`, `file` or `other`.
+3. Send `file_focus` with the `id` of that row. The id is `store:<id>`,
+   `note:<id>` or the id of a session overview.
+4. The reply is `focused <source> <id> "<title>"`. A failed reply has
+   `"ok":false` and an `error`. If `error` is `no item <id>` or starts
+   with `no open file`, go to step 5.
+5. For a store review or overview, use the `navigate` command of §9 "Focus
+   it now" (Fallback). Take its id and commit from `"$GG" note list --json`
+   (a review: `id`, `rev`) or `"$GG" overview list --all --json` (an
+   overview: `id`, `commit`). The reply is `opened review <id>` /
+   `opened overview <id>`. A thread or a session note has no `navigate`
+   route: say in one line where it is in the tool window. A thread is under
+   its review. A session note is in the Session group.
+6. No fresh `ide.json`, or no reply: say in one line where the item is in
+   the tool window. In By Date, it is under its day. In By Type, it is
+   under its kind, then under its day.

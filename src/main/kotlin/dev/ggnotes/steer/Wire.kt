@@ -56,6 +56,9 @@ data class Command(
     val wait: Boolean = false,
 )
 
+/** SPEC §4.3 owner of a note item: only the keys that are set. */
+data class OwnerWire(val commit: String? = null, val branch: String? = null, val preview: String? = null, val path: String? = null)
+
 /** SPEC §5 open-files entry. */
 data class OpenFileWire(
     val id: String,
@@ -70,6 +73,9 @@ data class OpenFileWire(
     val author: String? = null,
     val created: String? = null,
     val anchors: Int = 0,
+    /** Note-item rows only (`ItemKind.wire`); null on every other row. */
+    val kind: String? = null,
+    val owner: OwnerWire? = null,
 )
 
 /** SPEC §3.2. */
@@ -154,6 +160,15 @@ object Wire {
                     f.author?.takeIf { it.isNotEmpty() }?.let { addProperty("author", it) }
                     f.created?.takeIf { it.isNotEmpty() }?.let { addProperty("created", it) }
                     if (f.anchors != 0) addProperty("anchors", f.anchors)
+                    f.kind?.let { addProperty("kind", it) }
+                    f.owner?.let { ow ->
+                        add("owner", JsonObject().apply {
+                            ow.commit?.let { addProperty("commit", it) }
+                            ow.branch?.let { addProperty("branch", it) }
+                            ow.preview?.let { addProperty("preview", it) }
+                            ow.path?.let { addProperty("path", it) }
+                        })
+                    }
                 }
             }))
         }

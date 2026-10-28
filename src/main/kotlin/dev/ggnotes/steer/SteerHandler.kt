@@ -17,8 +17,13 @@ import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.vcs.log.impl.VcsLogNavigationUtil.jumpToHash
 import dev.ggnotes.git.GitAccess
+import dev.ggnotes.items.NoteItem
+import dev.ggnotes.items.NoteItems
+import dev.ggnotes.overview.ItemOpener
 import dev.ggnotes.overview.OverviewService
 import dev.ggnotes.overview.RevisionFiles
+import dev.ggnotes.overview.Snapshot
+import dev.ggnotes.store.RepoModel
 import dev.ggnotes.store.StoreLocator
 import java.awt.Color
 import java.awt.Graphics
@@ -280,8 +285,16 @@ class SteerHandler(private val project: Project, private val service: SteerServi
     private fun files(s: SteerService.RootSession, c: Command): Reply {
         var wire: List<OpenFileWire> = emptyList()
         onEdt { wire = openFilesWire(s) }
-        val r = Reply.ok(c.id, if (wire.isEmpty()) "no open files" else "").copy(files = wire)
-        return r
+        // then every note item and child (slice 4), built here on the worker from the polled snapshot and the session docs
+        val open = OverviewService.getInstance(project).open?.takeIf { it.repo == s.repo }?.overview
+        val all = wire + ItemRows.rows(noteItems(s), open)
+        return Reply.ok(c.id, if (all.isEmpty()) "no open files" else "").copy(files = all)
+    }
+
+    /** [s]'s note items as the tool window lists them: [snapshot]'s model of the root (empty when it has none) and the session docs. */
+    private fun noteItems(s: SteerService.RootSession, snapshot: Snapshot = OverviewService.getInstance(project).snapshot): List<NoteItem> {
+        val model = snapshot.repos.firstOrNull { it.repo.root == s.repo.root }?.model ?: RepoModel.EMPTY
+        return NoteItems.build(model, s.docs.index.overviews(), s.docs.index.notes())
     }
 
     /**
@@ -312,6 +325,8 @@ class SteerHandler(private val project: Project, private val service: SteerServi
 
     private fun fileFocus(s: SteerService.RootSession, c: Command): Reply {
         val name = c.fileId?.takeIf { it.isNotEmpty() } ?: c.file?.takeIf { it.isNotEmpty() } ?: return Reply.fail(c.id, "file_focus needs a file")
+        // a note item's id (`store:<record id>`, `note:<id>`); `:` is not valid in a session doc id, so it cannot be one
+        c.fileId?.takeIf { it.startsWith("store:") || it.startsWith("note:") }?.let { return focusItem(s, c, it) }
         // a document id names a session overview: show it in the tool window, answering with gg's own lead.
         // `gg session overview add` posts the focus right after its rename, ahead of any watch: an id not
         // listed yet makes the IDE re-read the directory once before refusing (session-docs rulings §6.3)
@@ -334,6 +349,30 @@ class SteerHandler(private val project: Project, private val service: SteerServi
             detail = "focused ${entry.path}" + (if (no > 0) " at line $no" else "")
         }
         return Reply.ok(c.id, detail)
+    }
+
+    /**
+     * `file_focus store:<id>` / `note:<id>`: show the tool window, open the item as its row's click
+     * does (an editor asked for focus: the agent brings it to the front) and select its row. An id
+     * not known yet re-reads once before refusing (Ruling 4): a store id the store, on this worker;
+     * a note id the docs directory.
+     */
+    private fun focusItem(s: SteerService.RootSession, c: Command, id: String): Reply {
+        val overviews = OverviewService.getInstance(project)
+        val item = ItemRows.find(noteItems(s), id) ?: run {
+            if (id.startsWith("store:")) {
+                ItemRows.find(noteItems(s, overviews.refreshSync()), id)
+            } else {
+                service.reloadDocsNow(s)
+                ItemRows.find(noteItems(s), id)
+            }
+        } ?: return Reply.fail(c.id, "no item $id")
+        onEdt {
+            com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow(OverviewService.TOOL_WINDOW_ID)?.show()
+            ItemOpener.open(project, item, s.repo, s, focusEditor = true)
+            overviews.ui?.revealItem(s.repo, id)
+        }
+        return Reply.ok(c.id, ItemRows.focusedReply(item))
     }
 
     // ---- retired verbs (session-docs SPEC §6.3) -------------------------------------------

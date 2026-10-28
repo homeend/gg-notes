@@ -119,7 +119,7 @@ link make it plain text (FILES.md §5). ≤ 64 KiB, ≤ 100 anchors.
    overview uses the tip link (`--ref <branch>`); the tip must be on disk
    too. The anchors are lines at the commit. Steps 2–4 are then FILES.md §9. Step 5: check each anchor against the
    file AT the commit (gg's `unresolved:` and refusal output is the check).
-   Step 6: focus it with FILES.md §9 "Result" / §11 (`navigate`), not §6.
+   Step 6: focus it with FILES.md §9 "Focus it now" / §11.
    Step 7: reply with the record id and where it shows, not the
    directory. A walk through uncommitted work or the working tree: steps
    1–7 below, as written.

@@ -18,7 +18,7 @@ With the project open, an agent in a terminal can say:
 | `gg session navigate --file src/a.go --new-line 12 --to ide` | opens the working file at line 12 |
 | `gg session highlight add src/a.go:3-4 --tone warn --to ide` | a persistent gutter/background marker on 3–4 |
 | `gg session note add src/a.go:3-4 --summary "…" --rationale "…"` | gg writes `<id>.toml` into the worktree's session docs directory (§5); the IDE shows a read-only remark box beside lines 3–4 (same overlay the overview remarks use) |
-| `gg session files --to ide` | the open-files list with ids `f<n>`, then the session overviews under their document ids |
+| `gg session files --to ide` | the open-files list with ids `f<n>`, then the session overviews under their document ids, then one row for every other item of the tool window (`store:<id>`, `note:<id>`; IDE-side extension, §5) |
 | `gg session overview add --title "Tour" --file tour.md` | gg writes `<id>.md` into the session docs directory; the overview is an item of the tool window (kind Other, under its day in By Date) and opens there (gg steers a `file_focus` for the id when a window is live) |
 | `gg session status` | an `ide: pid …` line (the plugin is live) |
 
@@ -99,8 +99,8 @@ Reply prose is English and parsed by agents: use these exact forms.
 | `navigate` with `target.state` ∈ `preview`,`ref`,`pair` | refuse | error `the IDE cannot show a <state> target` |
 | `highlight` | a `RangeHighlighter` (gutter mark + line background in the `tone` colour: info/warn/error) on `start..end` of `file` (`side` `new` or empty = new); kept until `highlight_clear` or the file closes | `marked <file> new:<start>-<end> as <tone>` |
 | `highlight_clear` | remove all; with `file`, only that file's | `cleared every mark` / `cleared the marks on <file>` |
-| `files` | the open-files list | `files: [...]` (§5), `detail: no open files` when empty |
-| `file_focus` | by `file_id` or `file`; `line` → caret; a `file_id` that is a session document id shows that overview (§5) — an id not listed yet makes the IDE re-read the directory once before refusing (gg posts the focus right after its rename) | `focused <path>` — ` at line <n>` appended only when the command named a line; an overview: `focused overview <id> "<title>"` (gg's lead, the title Go-quoted) / `no open file <name>` |
+| `files` | the open-files list, then the session overviews, then one row per note item and child (§5) | `files: [...]` (§5), `detail: no open files` only when the whole list is empty |
+| `file_focus` | by `file_id` or `file`; `line` → caret; a `file_id` that is a session document id shows that overview (§5) — an id not listed yet makes the IDE re-read the directory once before refusing (gg posts the focus right after its rename) | `focused <path>` — ` at line <n>` appended only when the command named a line; an overview: `focused overview <id> "<title>"` (gg's lead, the title Go-quoted) / `no open file <name>`. A `file_id` `store:<record id>` or `note:<id>` (IDE-side extension, §5) shows that item as a click on its row does (a store record: its document in the viewer; a session note: its lines in the editor, with focus), selects its row and replies `focused <source> <id> "<title>"`; a miss re-reads the store or the docs directory once, then error `no item <id>` |
 | `note_add`, `note_list`, `note_show`, `note_rm` | RETIRED (session-docs spec §6.3): refused BEFORE any other check, the worktree guard included; a gg that still sends them is older than the files; one notice per root | error `<verb> is retired: write the file (gg session note add)` |
 | `overview_add` / `overview_set` / `overview_list` / `overview_show` / `overview_rm` | RETIRED, as above | error `<verb> is retired: write the file (gg session overview add)` |
 | `focus`, `reload`, `serve` | refuse | error `<cmd> is a gg TUI command` |
@@ -124,6 +124,23 @@ go with it. After the files, `files` lists every session overview of the
 worktree as `{id: <document id>, path: <id>.md, source: overview, title,
 state, author, created (RFC 3339 UTC, when the file has one), anchors}`
 (the shown one first).
+
+**Item rows** (IDE-side extension, plugin 0.6.0). After the overview rows,
+`files` lists one row for every item of the tool window and for each of its
+children, recursively: the top items in By Date order, each followed by its
+children. A session overview has its row above and gets no second one; the
+notes it links do get rows. Row: `{id, source, kind, title, author, created
+(RFC 3339 UTC, left out when unknown), path, line, state, owner}`.
+- `id`: `store:<record id>` or `note:<id>`.
+- `source`: `store-overview`, `store-review`, `store-thread` or `session-note`.
+- `kind`: `commit`, `branch`, `pull-request`, `file` or `other`.
+- `path`, `line`: the file and first line of a thread or note; else `path` is `""` and `line` is left out (0) when there is no line.
+- `state`: `shown` when the tool window's open document is that record, else `background`. A session note is always `background`.
+- `owner`: `{commit?, branch?, preview?, path?}`, only the keys that have a value.
+
+gg compatibility: gg's JSON decoding drops fields it does not know, and its
+text printer prints an unknown `source` as it is. gg never sends the new
+ids. The rows and the ids are an extension of the IDE only.
 
 ### 5.1 The directory (session-docs spec §2, §4)
 

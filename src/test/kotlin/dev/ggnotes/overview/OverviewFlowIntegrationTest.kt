@@ -164,7 +164,8 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         assertTrue(wrongTree.get("error").asString, wrongTree.get("error").asString.startsWith("the IDE shows ") && wrongTree.get("error").asString.endsWith(", not /somewhere/else"))
 
         val files = post("2-7", """{"id":"2-7","cmd":"files","wait":true}""")
-        val list = files.getAsJsonArray("files").map { it.asJsonObject }
+        // today's rows (the note items' rows follow them since slice 4: testFilesListsEveryItemAfterTheOpenFiles)
+        val list = files.getAsJsonArray("files").map { it.asJsonObject }.filter { it.get("source").asString !in NEW_SOURCES }
         assertEquals("most recently shown first", "internal/x/gate.go", list[0].get("path").asString)
         assertEquals("shown", list[0].get("state").asString)
         assertTrue(list.drop(1).all { it.get("state").asString == "background" })
@@ -1066,6 +1067,182 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
         val away = com.intellij.testFramework.TestActionEvent.createTestEvent(action, context)
         action.update(away)
         assertFalse("not offered away from a note", away.presentation.isEnabledAndVisible)
+    }
+
+    // ---- slice 4: `files` and `file_focus` for every note item --------------------------------
+
+    private val NEW_SOURCES = setOf("session-note", "store-overview", "store-review", "store-thread")
+
+    private fun startSteer(): dev.ggnotes.steer.SteerService.RootSession {
+        val steer = dev.ggnotes.steer.SteerService.getInstance(project)
+        return ApplicationManager.getApplication().executeOnPooledThread<List<dev.ggnotes.steer.SteerService.RootSession>> { steer.startSync() }.get().single()
+    }
+
+    /** Post one command into [s]'s inbox and wait for its reply. */
+    private fun ask(s: dev.ggnotes.steer.SteerService.RootSession, id: String, body: String): com.google.gson.JsonObject {
+        val ide = s.ideDir
+        Files.writeString(ide.resolve(".tmp-$id"), body)
+        Files.move(ide.resolve(".tmp-$id"), ide.resolve("cmd-$id.json"))
+        waitFor("reply $id") { Files.isRegularFile(ide.resolve("reply-$id.json")) }
+        return com.google.gson.JsonParser.parseString(Files.readString(ide.resolve("reply-$id.json"))).asJsonObject
+    }
+
+    private fun storeDir(): Path {
+        val common = git("rev-parse", "--path-format=absolute", "--git-common-dir").trim()
+        return stateHome.resolve("gg").resolve("notes").resolve(dev.ggnotes.store.StoreLocator.key(common))
+    }
+
+    private fun refreshStore(): Snapshot =
+        ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { OverviewService.getInstance(project).refreshSync() }.get()
+
+    /** `files`: today's rows first (unchanged), then one row per note item and child, with kind and owner. */
+    fun testFilesListsEveryItemAfterTheOpenFiles() {
+        val steer = dev.ggnotes.steer.SteerService.getInstance(project)
+        val session = startSteer()
+        Files.createDirectories(session.docsDir)
+        Files.writeString(session.docsDir.resolve("n-1.toml"), "path = 'internal/x/gate.go'\nstart = 4\nend = 4\nsummary = 'Returns the flag.'\nlines = ['\treturn open']\n")
+        steer.reloadDocs()
+        waitFor("the note is indexed") { session.docs.index.notes().size == 1 }
+        refreshStore()
+        assertEquals("opened internal/x/gate.go:3", ask(session, "f-1", """{"id":"f-1","cmd":"navigate","file":"internal/x/gate.go","line":{"side":"new","no":3},"wait":true}""").get("detail").asString)
+
+        val rows = ask(session, "f-2", """{"id":"f-2","cmd":"files","wait":true}""").getAsJsonArray("files").map { it.asJsonObject }
+        val firstNew = rows.indexOfFirst { it.get("source").asString in NEW_SOURCES }
+        assertEquals("today's rows come first: the one open file", 1, firstNew)
+        assertTrue("every row after them is a note item", rows.drop(firstNew).all { it.get("source").asString in NEW_SOURCES })
+        val old = rows[0]
+        assertEquals("f1", old.get("id").asString)
+        assertEquals("internal/x/gate.go", old.get("path").asString)
+        assertFalse("today's row carries no kind", old.has("kind"))
+        assertFalse("today's row carries no owner", old.has("owner"))
+
+        val ov = rows.single { it.get("id").asString == "store:7cf0812f" }
+        assertEquals("store-overview", ov.get("source").asString)
+        assertEquals("commit", ov.get("kind").asString)
+        assertEquals(sha, ov.getAsJsonObject("owner").get("commit").asString)
+        assertEquals("background", ov.get("state").asString)
+        val ids = rows.map { it.get("id").asString }
+        assertTrue("a contained thread follows its review", ids.indexOf("store:aa110001") > ids.indexOf("store:c0ffee01"))
+        val note = rows.single { it.get("id").asString == "note:n-1" }
+        assertEquals("session-note", note.get("source").asString)
+        assertEquals("file", note.get("kind").asString)
+        assertEquals("internal/x/gate.go", note.get("path").asString)
+        assertEquals(4, note.get("line").asInt)
+    }
+
+    /** `file_focus store:<id>` opens the record as its row's click does and selects that row; `files` then calls it shown. */
+    fun testFileFocusOpensAStoreItemAndSelectsItsRow() {
+        val session = startSteer()
+        withPanel { panel, _ ->
+            val service = OverviewService.getInstance(project)
+            val reply = ask(session, "s-1", """{"id":"s-1","cmd":"file_focus","file_id":"store:7cf0812f","wait":true}""")
+            assertEquals(reply.toString(), "focused store-overview store:7cf0812f \"How the gate works\"", reply.get("detail")?.asString)
+            assertEquals("7cf0812f", service.open?.overview?.id)
+            assertEquals("", service.open?.overview?.viewKind)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("store:7cf0812f", panel.selectedItemId)
+            val rows = ask(session, "s-2", """{"id":"s-2","cmd":"files","wait":true}""").getAsJsonArray("files").map { it.asJsonObject }
+            assertEquals(listOf("store:7cf0812f"), rows.filter { it.get("state").asString == "shown" }.map { it.get("id").asString })
+
+            val review = ask(session, "s-3", """{"id":"s-3","cmd":"file_focus","file_id":"store:c0ffee01","wait":true}""")
+            assertEquals(review.toString(), "store-review", review.get("detail")?.asString?.split(' ')?.getOrNull(1))
+            assertEquals("review:c0ffee01:", service.open?.overview?.viewKind)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("store:c0ffee01", panel.selectedItemId)
+        }
+    }
+
+    /** A thread inside a review is focused by its own id: its notes document opens and the child row is selected, not the review's. */
+    fun testFileFocusOnAChildThreadSelectsTheChild() {
+        val session = startSteer()
+        withPanel { panel, snapshot ->
+            val items = dev.ggnotes.items.NoteItems.build(snapshot.repos.single().model, emptyList(), emptyList())
+            assertFalse("the thread is not a top item", items.any { it.id == "store:aa110001" })
+            assertEquals("store:aa110001", items.single { it.id == "store:c0ffee01" }.children.single { it.id == "store:aa110001" }.id)
+
+            val reply = ask(session, "t-1", """{"id":"t-1","cmd":"file_focus","file_id":"store:aa110001","wait":true}""")
+            assertEquals(reply.toString(), "focused store-thread store:aa110001 \"Why not return early?\"", reply.get("detail")?.asString)
+            val service = OverviewService.getInstance(project)
+            waitFor("the thread's notes open") { service.open?.overview?.viewKind == "notes:aa110001:" }
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("store:aa110001", panel.selectedItemId)
+        }
+    }
+
+    /** `file_focus note:<id>`: the working file opens with the note's lines selected and the note's row (under its overview) is selected. */
+    fun testFileFocusOnASessionNoteOpensItsLines() {
+        val session = startSteer()
+        Files.createDirectories(session.docsDir)
+        Files.writeString(session.docsDir.resolve("n-1.toml"), "path = 'internal/x/gate.go'\nstart = 4\nend = 4\nsummary = 'Returns the flag.'\nlines = ['\treturn open']\n")
+        Files.writeString(session.docsDir.resolve("ov-1.md"), "+++\ntitle = 'Tour'\n+++\nsee [the note](note:n-1)\n")
+        withPanel { panel, snapshot ->
+            // written a moment ago, maybe not reconciled yet: the focus re-reads the directory once
+            val reply = ask(session, "n-1", """{"id":"n-1","cmd":"file_focus","file_id":"note:n-1","wait":true}""")
+            assertEquals(reply.toString(), "focused session-note note:n-1 \"Returns the flag.\"", reply.get("detail")?.asString)
+            val items = dev.ggnotes.items.NoteItems.build(snapshot.repos.single().model, session.docs.index.overviews(), session.docs.index.notes())
+            assertEquals("the note is the overview's child", "note:n-1", items.single { it.id == "ov-1" }.children.single().id)
+            val fem = FileEditorManager.getInstance(project)
+            assertEquals("gate.go", fem.selectedFiles.single().name)
+            assertTrue("the working file, not a revision", fem.selectedFiles.single().isInLocalFileSystem)
+            val editor = fem.selectedTextEditor!!
+            assertEquals(editor.document.getLineStartOffset(3), editor.selectionModel.selectionStart)
+            assertEquals(editor.document.getLineEndOffset(3), editor.selectionModel.selectionEnd)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("note:n-1", panel.selectedItemId)
+            assertNull("a note opens no document", OverviewService.getInstance(project).open)
+        }
+    }
+
+    /** A store record written seconds ago (not in the polled snapshot yet) is found after one re-read; an unknown id is refused. */
+    fun testFileFocusOnAFreshStoreRecordReReadsOnce() {
+        val session = startSteer()
+        withPanel { panel, snapshot ->
+            assertTrue(snapshot.repos.single().model.commits.none { c -> c.overviews.any { it.id == "feed0001" } })
+            val file = storeDir().resolve("commits.toml")
+            val record = """
+                |[[notes]]
+                |id = 'feed0001'
+                |source = 'agent'
+                |author = 'ada'
+                |side = 'new'
+                |range = [0, 0]
+                |context_hash = ''
+                |summary = 'Fresh'
+                |rationale = "{\"version\": 1, \"title\": \"Fresh\", \"overview\": \"A fresh tour.\"}"
+                |tags = ['overview']
+                |created = 2026-10-28T10:00:00Z
+                |updated = 2026-10-28T10:00:00Z
+                |
+                |[notes.address]
+                |Worktree = ''
+                |Branch = 'main'
+                |Commit = '$sha'
+                |ShelfID = ''
+                |Path = ''
+                |State = 0
+                |
+                |""".trimMargin()
+            Files.writeString(file, Files.readString(file).replace("[[resolved]]", record + "[[resolved]]"))
+            val reply = ask(session, "r-1", """{"id":"r-1","cmd":"file_focus","file_id":"store:feed0001","wait":true}""")
+            assertEquals(reply.toString(), "focused store-overview store:feed0001 \"Fresh\"", reply.get("detail")?.asString)
+            assertEquals("feed0001", OverviewService.getInstance(project).open?.overview?.id)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("store:feed0001", panel.selectedItemId)
+
+            assertEquals("no item store:nope", ask(session, "r-2", """{"id":"r-2","cmd":"file_focus","file_id":"store:nope","wait":true}""").get("error")?.asString)
+            assertEquals("no item note:nope", ask(session, "r-3", """{"id":"r-3","cmd":"file_focus","file_id":"note:nope","wait":true}""").get("error")?.asString)
+        }
+    }
+
+    /** No store records, no session docs and no open files: today's reply, `no open files` and no rows. */
+    fun testFilesWithNothingKeepsTodaysReply() {
+        Files.delete(storeDir().resolve("commits.toml"))
+        val snapshot = refreshStore()
+        assertTrue(snapshot.repos.single().model.commits.all { it.overviews.isEmpty() && it.reviews.isEmpty() && it.files.isEmpty() })
+        val session = startSteer()
+        val reply = ask(session, "e-1", """{"id":"e-1","cmd":"files","wait":true}""")
+        assertEquals(reply.toString(), "no open files", reply.get("detail")?.asString)
+        assertEquals(reply.toString(), 0, reply.getAsJsonArray("files")?.size() ?: 0)
     }
 
     private fun write(rel: String, text: String) {
