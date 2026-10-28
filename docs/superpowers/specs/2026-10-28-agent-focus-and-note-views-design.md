@@ -1,8 +1,9 @@
-# Agents without gg, owned session docs, and the date/type views — design
+# Agents without gg, focus anything, and the date/type views — design
 
-**Date:** 2026-10-28 · **Status:** draft for the user's approval ·
-**Repo:** gg-notes (AgentNotes plugin + `agent-skills/`), with one shared-spec
-change in gigagit.
+**Date:** 2026-10-28 · **Status:** approved 2026-10-28, revised the same day
+(owned items go to the gg store through the CLI; no format change) ·
+**Repo:** gg-notes (AgentNotes plugin + `agent-skills/`). No change to gg or
+to any shared spec.
 
 ## 1. Why
 
@@ -11,21 +12,22 @@ and outside gg — the IDE terminal, JetBrains AI Assistant, Air. Outside gg, an
 agent asked to "focus the review in the IDE" answered that it needed gg (to
 delete notes, it turned out). The user wants:
 
-1. **An agent outside gg does everything itself.** It writes the files, steers
-   the IDE through the inbox, and calls the `gg` CLI only where gg owns the
-   data (deleting a gg-store record) — and finds `gg` on PATH itself. Inside
-   gg, it keeps using gg's verbs.
+1. **An agent outside gg does everything itself.** No gg instance (TUI, web)
+   is needed. The `gg` CLI is a tool like git: the agent finds it on PATH
+   itself and uses it wherever gg owns the data. Inside gg, it keeps using
+   gg's verbs.
 2. **What the IDE shows, the agent can focus.** Whatever the Agent Notes tool
    window of the IDE opened on worktree W lists, an agent working in W can
    bring to the front.
-3. **Notes belong to what they address.** As in gg, a note or document has an
-   owner — a commit, a branch, a pull request, a file, or nothing — and the
-   IDE on worktree W shows the documents whose owner W can see. An agent's
-   session docs get the same kind of address gg's store records have.
+3. **Notes belong to what they address — as gg already does.** A gg-store
+   record's address says whether it belongs to a commit, a branch, a pull
+   request / merge preview, a file or a worktree. An agent that writes about
+   a commit, a branch or a PR stores it in gg through the CLI, so it gets
+   that address; the IDE already reads the store. Nothing is redesigned.
 4. **Two views, date first.** The tool window shows a **Date** view (default:
-   day → everything added that day, newest first, an icon per kind) or a
-   **Type** view (Branch / Commit / Pull request / File / Other → day → items).
-   Goal: "find today's review" in one glance. The user's own sketch:
+   day → everything added that day, an icon per kind) or a **Type** view
+   (Branch / Commit / Pull request / File / Other → day → items). Goal: "find
+   today's review" in one glance. The user's own sketch:
 
    ```text
    By Date                          By Type
@@ -52,51 +54,47 @@ delete notes, it turned out). The user wants:
 (`dev.ggnotes.store`, `dev.ggnotes.session`, `dev.ggnotes.steer`) the way the
 repo already does it.
 
-**Non-goals:** gg's own reader (TUI/web) honouring the new address keys — that
-is a gigagit task this design only specifies; writing into the gg store from
-the IDE or an agent other than through gg; PR comments; a search box.
+**Non-goals:** any change to gg, the notes-store format or the session-docs
+format; focusing the IDE's new rows from INSIDE gg (user, 2026-10-28: later,
+a gigagit task); PR comments; a search box; shelf notes.
 
 **Anti-goals (a failure even if it "works"):**
 - an agent outside gg telling the user to start gg, or to set a path/property;
-- an agent writing or deleting gg-store files directly;
+- an agent writing or deleting gg-store files directly (only the `gg` CLI);
 - the views listing a review AND, again as separate rows, the line notes it
   already contains (user: "just top addressable notes");
-- an agent anchoring lines it did not read from the commit it names.
+- a new address/owner mechanism next to gg's (user, 2026-10-28: "this is
+  already set and works in gg").
 
 ## 3. Facts this rests on (checked 2026-10-28)
 
-- **gg's owner model** (`internal/model/note.go:264-316`, `model.go:659`):
-  a record's `address {Worktree, Branch, Commit, ShelfID, Path, State}` says
-  what owns it. Commit + path = a line note under that commit; commit, no
-  path, tag `review` / `overview` = a commit review / permanent overview;
-  worktree, no path, tag `review` = a working review; shelf id = a shelf
-  note. `Address.Branch` alone "proves nothing" (a label). Branch ownership
-  exists only for a range review (`preview_branch`, `domain.ReviewShownOn`);
-  a `preview` scope belongs to a pull request or merge preview.
-- The plugin already classifies reviews: `ReviewKind` = COMMIT, RANGE,
-  BRANCH, PULL_REQUEST, MERGE_PREVIEW, PAIR, WORKING (`store/Reviews.kt:52,
-  129-138`), and a review carries `scopedNotes`/`scopedThreads` — the line
-  notes gg shows under it.
-- **Inside gg** = the environment has `GG_SESSION_ID` (gg sets it, plus
-  `GG_MCP_URL`/`GG_SESSION_TOKEN`, for every agent it starts, and strips them
-  from a child started outside: `internal/agentsession/session.go:166`;
-  `internal/cli/agent.go:42` uses the same test).
-- Session docs (`docs/gg-session-docs/SPEC.md`, source of truth gigagit
-  `docs/superpowers/specs/2026-10-18-gg-session-docs-design.md`): readers
-  ignore unknown keys (§3.2, §3.3), so new optional keys are compatible.
-- Deleting a gg-store record needs gg (cross-process O_EXCL lock, cascade of
-  replies/resolutions); the `gg` CLI does it with no gg process running
-  (`gg note rm <id>`, `gg overview rm <id>`, or `gg batch`). Deleting a
-  session doc is `rm` of its file.
-- The plugin finds `gg` without a setting since 0.4.6 (`GgLocator`, merged
-  to master as 7622bb8). Slices branch from master after it.
-- gg sets `Address.Branch` on a REVIEW only when it reviewed a branch
-  (`domain/review.go:224`), so the plugin's `kindOf` (branch set → BRANCH) is
-  gg's rule; gg's "was tip" (`ReviewKindOf`) is the same kind with a
-  different badge. On a permanent OVERVIEW gg stores the save-time branch as
-  a label only (`overview_save.go:70`).
-- An agent outside gg lists store ids with the CLI: `gg note list`
-  (gg on PATH; no gg process needed).
+- **gg's address model** (`internal/model/note.go:264-316`, `model.go:659`):
+  `address {Worktree, Branch, Commit, ShelfID, Path, State}` + tags +
+  `scope`/`preview`/`preview_branch`. Commit + path = a line note under that
+  commit; commit, no path, tag `review` / `overview` = a commit review /
+  permanent overview; worktree, no path, tag `review` = a working review.
+  gg sets `Address.Branch` on a REVIEW only when it reviewed a branch
+  (`domain/review.go:224`); on a permanent OVERVIEW it is the save-time
+  branch, a label only (`overview_save.go:70`).
+- The plugin already reads all of it and classifies reviews: `ReviewKind` =
+  COMMIT, RANGE, BRANCH, PULL_REQUEST, MERGE_PREVIEW, PAIR, WORKING
+  (`store/Reviews.kt:52, 129-138`, gg's rule); a review carries
+  `scopedNotes`/`scopedThreads` — the line notes gg shows under it.
+- **The gg CLI writes the store with no gg instance running:**
+  `gg review save <gg-link> --agent <name> --stdin [--json] [--dry-run]`
+  (a commit, branch, PR/merge-preview, pair or working-changes review),
+  `gg overview save [<gg-link>] --agent <name> (--stdin|--file) [--title]`
+  (a permanent overview on a commit), `gg note add <gg-link> --summary …`
+  (a line note), `gg note list`, `gg note rm <id>`, `gg overview rm <id>`.
+  Links: `gg link <rev>` (`gg://<repo>/<rev>`), `--pr <n>`, `--pair`,
+  `--cached`. The store's cross-process lock and cascades stay gg's.
+- **Inside gg** = `GG_SESSION_ID` is set (gg sets it for every agent it
+  starts and strips it from a child started outside:
+  `internal/agentsession/session.go:166`, `internal/cli/agent.go:42`).
+- Session docs (`docs/gg-session-docs/SPEC.md`) need no gg at all; they are
+  per worktree and on the working tree only. They stay as they are.
+- The plugin finds `gg` without a setting since 0.4.6 (`GgLocator`, master
+  7622bb8). Slices branch from master.
 
 ## 4. The parts
 
@@ -106,72 +104,50 @@ Every `agent-*` skill gets one short rule at the top, and `FILES.md` gets the
 recipes:
 
 - **Where am I.** `GG_SESSION_ID` set → inside gg: use the `gg-*` skills and
-  `gg session …` verbs. Not set → use these files; never ask the user to
-  start gg.
-- **Deleting.** A session doc: delete its file. A gg-store record (an id the
-  IDE lists with `source` `store-*`, §4.4): `command -v gg` (PowerShell
-  `Get-Command gg`) → `gg note rm <id>` / `gg overview rm <id>` in the
-  worktree (ids: `gg note list`, or the IDE's `files` once §4.4 ships); no gg on PATH → tell the user in one line to use the tool
-  window's **Remove from gg Store**. Never edit store files.
-- **Focusing something that already exists** (new §6.1): when the IDE is
-  live, send `files` (§4.4), pick the item by title / kind / date, send
-  `file_focus` with its id. Not live → say where it is in the tool window.
-- **Owner.** A note or overview the agent writes about a commit carries that
-  commit (§4.2): `commit = $(git rev-parse <rev>)`; for the work on a branch,
-  also `branch`; for a pull request, `preview`. Uncommitted work: no owner
-  key (today's behaviour). The `lines` of a commit-owned note come from
-  `git show <commit>:<path>`, not from the working file.
+  `gg session …` verbs. Not set → this skill; never ask the user to start
+  gg or to configure anything.
+- **Where it goes.** `command -v gg` (PowerShell `Get-Command gg`):
+  - **gg on PATH, the work is about a commit, a branch or a PR** (a review
+    of a commit/branch/PR; an overview of a commit) → the gg store through
+    the CLI: `gg link …` for the target, `gg review save <link> --agent …
+    --stdin` / `gg overview save <link> --agent … --file …`, line notes with
+    `gg note add <link>:<N>`. The document shapes are what `--dry-run
+    --json` prints and the notes-store spec defines (the recipe follows
+    gg's own `gg-review` / `gg-overview` store steps). The IDE lists it
+    under its commit/branch/PR; the reply names the record id.
+  - **Otherwise** (uncommitted work, a walkthrough of the working tree, or
+    no gg) → session-doc files, exactly as today.
+- **Deleting.** A session doc: delete its file. A store record:
+  `gg note rm <id>` / `gg overview rm <id>` in the worktree (ids from
+  `gg note list` / `gg overview list`, or the IDE's `files`, §4.3); no gg on
+  PATH → one line: use the tool window's **Remove from gg Store**. Never
+  edit store files.
+- **Focusing something that already exists** (new `FILES.md` section): when
+  the IDE is live, send `files`, pick the item by title / kind / date, send
+  `file_focus` with its id (§4.3). Before slice 4: session overviews only,
+  and store items by saying where they are in the tool window.
 
 The gg skills (`gg-review`, `gg-overview`, `reviewing-with-gg`, `using-gg`)
-are gigagit's; they get the mirror sentence ("`GG_SESSION_ID` unset and the
-AgentNotes plugin in use → the `agent-*` skills") in gigagit, on a branch,
-not merged without the user.
+are gigagit's and are not changed by this design.
 
-### 4.2 Session docs get an owner (shared spec)
-
-New optional keys, same names in a note's TOML and an overview's front
-matter:
-
-| key | meaning |
-|---|---|
-| `commit` | full sha. The document is about this commit: a note's `start/end/lines` are lines of `<commit>:<path>`; an overview's anchors open files at this commit |
-| `branch` | the branch the work was on (owner when `commit` is a range tip, like gg's `preview_branch`) |
-| `preview` | a pull request or merge preview scope, gg's spelling (`<base>...refs/gg/pr/<n>`, `<target>...<source>`) |
-
-Absent = today: the working tree of the directory's worktree.
-
-Reader rules (plugin): a commit-owned overview opens like a store overview
-(revision tab at the commit, banner with **Open current version**); a
-commit-owned note is a box on that revision tab, and is cold-anchored on the
-working file by its `lines` like today. A commit not in the repository: the
-row is shown, marked missing (as store commits already are). Shown in the
-IDE of worktree W: every session doc in W's directory (the directory is
-already per worktree), whatever commit it names — answer 3 of the user: the
-commit need not be checked out.
-
-Spec work: a dated addendum in gigagit
-(`docs/superpowers/specs/2026-10-28-session-docs-owner-design.md`) plus the
-conformance examples, then refresh this repo's copy `docs/gg-session-docs/`.
-`SessionDocParser` gains the keys (table tests from the examples).
-
-### 4.3 The item model (pure, unit-tested)
+### 4.2 The item model (pure, unit-tested)
 
 One list of **items** per repository, built from `RepoModel` (store) and the
 session docs, each item:
 `{ id, source, kind, title, owner label, author, created, children }`.
 
-**Kind** (icon + Type-view group):
+**Kind** (icon + Type-view group), from gg's address:
 
 | kind | store | session doc |
 |---|---|---|
-| Commit | permanent overview (its `branch` is a label, not an owner); review with ReviewKind COMMIT, RANGE or PAIR | overview with `commit` only |
-| Branch | review with ReviewKind BRANCH (whether the branch is still at the reviewed commit or not — "was tip" is a badge) | overview with `branch` (the agent declares it) |
-| Pull request | review with PULL_REQUEST or MERGE_PREVIEW; a `previews.toml` overview | overview with `preview` |
-| File | a line-note thread not contained in a top item | a note not linked by any overview |
-| Other | working review; anything unclassified | overview with no owner |
+| Commit | permanent overview (its `branch` is a label); review with ReviewKind COMMIT, RANGE or PAIR | — |
+| Branch | review with ReviewKind BRANCH (still at the reviewed commit or not — gg's "was tip" is a badge) | — |
+| Pull request | review with PULL_REQUEST or MERGE_PREVIEW; a `previews.toml` overview | — |
+| File | a line-note thread (commit or working tree) not contained in a top item | a note not linked by any overview |
+| Other | working review | overview |
 
-Shelf notes stay out: SPEC-part2 §7 keeps them out until the shelf store has
-a reader spec, and the plugin does not read `shelf.toml`.
+Shelf notes stay out (SPEC-part2 §7: no reader spec yet; the plugin does not
+read `shelf.toml`).
 
 **Top items only.** A line note that a review or overview contains is NOT a
 row of its own; it is a child of that item (reachable, not repeated).
@@ -189,27 +165,27 @@ branch filter.
 **Date** = `created` (store record; session doc front matter), else the
 file's mtime; shown and grouped in the IDE's local time zone.
 
-### 4.4 Focus anything shown (steer, `PLUGIN.md`)
+### 4.3 Focus anything shown (steer, `PLUGIN.md`)
 
-- `files` reply: after the open files and session overviews (today's rows,
-  unchanged — gg as shipped reads them), one entry per other **top item and
-  child** of §4.3: `{id, source, kind, title, author, created, owner,
-  state}`, `source` = `session-note` | `store-overview` | `store-review` |
-  `store-thread`, `kind` = `commit` | `branch` | `pull-request` | `file` |
-  `other`, `owner` = `{commit?, branch?, preview?, path?}`. The exact shape
-  is gigagit's owner addendum §4
-  (`docs/superpowers/specs/2026-10-28-session-docs-owner-design.md`, branch
-  `spec/session-docs-owner`).
+- `files` reply: today's rows unchanged (open files, then session overviews
+  with `source: "overview"` — gg as shipped reads them), then one entry per
+  other **top item and child** of §4.2: `{id, source, kind, title, author,
+  created, owner, state}`; `source` = `session-note` | `store-overview` |
+  `store-review` | `store-thread`; `kind` = `commit` | `branch` |
+  `pull-request` | `file` | `other`; `owner` = `{commit?, branch?,
+  preview?, path?}` from the record's address.
 - Ids: session overview = its file id (unchanged); session note =
   `note:<id>` (the anchor grammar); store = `store:<record id>`.
 - `file_focus` with such an id: open it in the viewer (an overview/review in
   the document pane, a note/thread at its lines) and select its row in the
-  tool window. Reply `focused <source> <id> "<title>"`. Unknown id →
+  tool window. Reply `focused <source> <id> "<title>"`; a session overview
+  keeps today's `focused overview <id> "<title>"`. Unknown id →
   `no item <id>`.
-- These are IDE-side extensions of the steer protocol; recorded in
-  `PLUGIN.md` and sent to gigagit's steer spec as an addendum.
+- gg compatibility (checked): gg's JSON decoding drops unknown fields, its
+  text printer prints unknown `source` values verbatim, and gg never sends
+  the new ids. An IDE-side extension, recorded in `PLUGIN.md`.
 
-### 4.5 The tool window
+### 4.4 The tool window
 
 - A selector in the toolbar: **By Date** (default) | **By Type**, a radio pair
   (`AnAction` + `Toggleable`, not `ToggleAction` — CLAUDE.md), remembered per
@@ -229,21 +205,17 @@ file's mtime; shown and grouped in the IDE's local time zone.
   (today's `RemovalPlan.forCommit`). No delete on day or type nodes.
   AGENTS.md §4's "group by commit" contract is rewritten to these views.
 - Several git roots: one repo node on top of either view, as today.
-- Everything else stays: opening, Delete / Remove from gg Store, Copy Link,
-  `on screen`, `⚠ N unresolved`, missing commits.
+- Everything else stays: opening, Copy Link, `on screen`, `⚠ N unresolved`,
+  missing commits.
 
 ## 5. Slices (each ships alone, in order)
 
-1. **Skills** (§4.1, minus the parts that need 2–4): in/out-of-gg rule,
-   deletion recipe, "focus an existing session overview" via the directory.
-   Fixes the AIR failure. No plugin change.
-2. **Item model** (§4.3) for store records + today's session docs, pure, with
-   tests. No UI change yet.
-3. **Views** (§4.5) on the item model; default Date.
-4. **Focus anything** (§4.4) + the skill section using it.
-5. **Session-doc owner** (§4.2): gigagit addendum + conformance, plugin
-   parser + rendering, skill "Owner" paragraph, the kind column for owned
-   session docs.
+1. **Skills** (§4.1): in/out-of-gg rule, store-through-CLI for commit /
+   branch / PR work, deletion recipe, focusing a session overview. Fixes the
+   AIR failure. No plugin change.
+2. **Item model** (§4.2), pure, with tests. No UI change yet.
+3. **Views** (§4.4) on the item model; default Date.
+4. **Focus anything** (§4.3) + the skill section using it.
 
 Each slice: its own `feat/<name>` worktree, version bump + change notes,
 full suite + `verifyPlugin`, merged only on the user's OK.
@@ -251,25 +223,25 @@ full suite + `verifyPlugin`, merged only on the user's OK.
 ## 6. Left to the builder
 
 Icons (platform `AllIcons` picks), exact row text layout, the owner label
-format, how a child row looks, the `files` entry order, test fixture data.
+format, how a child row looks, the `files` entry order, test fixture data,
+the exact store-document recipe in `FILES.md` (copied from gg's own skills
+and `--dry-run --json` output, not invented).
 
 ## 7. Calls made without the user (check these)
 
 - Pull request and merge preview share the **Pull request** kind; RANGE and
   PAIR are **Commit**; a store overview's `branch` is a label (→ Commit).
-- Working reviews are **Other**; shelf notes are left out (no reader spec).
+- Working reviews and session overviews are **Other**; shelf notes are left
+  out (no reader spec).
 - A note contained twice has one parent: review before overview, then newest.
 - No branch/reachability filter: what is shown today stays shown.
-- "Contained in the review" (§4.3) includes, for a prose review, every line
-  note on its commit.
+- "Contained in the review" includes, for a prose review, every line note on
+  its commit.
 - Contained notes stay reachable as children of their item.
-- A commit-owned session note also shows on the working file (cold anchored),
-  not only on the revision tab.
 - Item ids are namespaced (`store:`, `note:`) so they cannot collide.
 - Items within a day are newest first.
-- Delete as in §4.5: per item with children, plus "Remove Everything on This
-  Commit" on commit-owned store items; nothing on day/type nodes.
-- Focusing the new items from INSIDE gg is out of scope (user, 2026-10-28):
-  the plugin keeps today's `files` entries and `focused overview <id>
-  "<title>"` reply for session overviews unchanged so gg as shipped keeps
-  working; the new entries are added after them.
+- Delete: per item with children, plus "Remove Everything on This Commit"
+  on commit-owned store items; nothing on day/type nodes.
+- An agent outside gg with gg on PATH stores commit / branch / PR work in
+  the gg store (permanent, shared by every worktree of the repo, subject to
+  gg's expiry); without gg it writes session docs (working tree only).
