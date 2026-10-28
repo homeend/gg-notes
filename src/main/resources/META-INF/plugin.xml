@@ -23,6 +23,11 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.6.1</h3>
+        <ul>
+            <li>A click on a link in a long overview no longer moves the overview back to its top:
+                it stays where you scrolled it while the file opens. Another document still opens at its top.</li>
+        </ul>
         <h3>0.6.0</h3>
         <ul>
             <li>Agents can focus <b>every item</b> the tool window shows: <code>files</code> lists
