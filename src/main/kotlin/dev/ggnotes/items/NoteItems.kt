@@ -3,12 +3,15 @@ package dev.ggnotes.items
 import dev.ggnotes.session.DocIndex
 import dev.ggnotes.session.SessionNoteDoc
 import dev.ggnotes.session.SessionOverviewDoc
+import dev.ggnotes.store.DocumentResult
 import dev.ggnotes.store.NoteRecord
 import dev.ggnotes.store.NoteThread
 import dev.ggnotes.store.Overview
 import dev.ggnotes.store.RepoModel
 import dev.ggnotes.store.Review
+import dev.ggnotes.store.ReviewContent
 import dev.ggnotes.store.ReviewKind
+import java.time.Instant
 import java.time.OffsetDateTime
 
 /** Pure: the store model and the session docs as [NoteItem]s with their kind, owner and date. */
@@ -19,26 +22,66 @@ object NoteItems {
         sessionOverviews: List<DocIndex.Entry<SessionOverviewDoc>>,
         sessionNotes: List<DocIndex.Entry<SessionNoteDoc>>,
     ): List<NoteItem> {
-        val out = ArrayList<NoteItem>()
+        val tops = ArrayList<NoteItem>()
+        val adopted = HashMap<String, MutableList<NoteItem>>()
+        fun adopt(parent: String, child: NoteItem) { adopted.getOrPut(parent) { ArrayList() } += child }
+
         for (c in model.commits) {
-            for (o in c.overviews) out += overviewItem(o, c.overviewReplies[o.id].orEmpty())
-            for (r in c.reviews) out += reviewItem(r)
-            for (f in c.files) for (t in f.threads) out += threadItem(t, t.root.address.commit, null)
+            val overviews = c.overviews.map { overviewItem(it, c.overviewReplies[it.id].orEmpty()) }
+            val reviews = c.reviews.map { reviewItem(it) }
+            tops += overviews + reviews
+            val docs = c.overviews.associate { "store:${it.id}" to (it.document as? DocumentResult.Ok)?.document?.files?.map { f -> f.path }.orEmpty().toSet() }
+            val lists = c.reviews.associate { "store:${it.id}" to reviewPaths(it) }
+            for (f in c.files) for (t in f.threads) {
+                place(threadItem(t, t.root.address.commit, null), f.path, reviews, lists, overviews, docs, tops, ::adopt)
+            }
         }
         for (w in model.working) {
-            for (r in w.reviews) out += reviewItem(r)
-            for (f in w.files) for (t in f.threads) out += threadItem(t, "", w.worktree)
+            val reviews = w.reviews.map { reviewItem(it) }
+            tops += reviews
+            val lists = w.reviews.associate { "store:${it.id}" to reviewPaths(it) }
+            for (f in w.files) for (t in f.threads) {
+                place(threadItem(t, "", w.worktree), f.path, reviews, lists, emptyList(), emptyMap(), tops, ::adopt)
+            }
         }
-        for (e in sessionOverviews) out += NoteItem(
+        val notesLinked = HashMap<String, DocIndex.Entry<SessionOverviewDoc>>()
+        for (e in sessionOverviews.sortedWith(NEWEST_SESSION)) for (n in e.doc.anchors.mapNotNull { it.note }) notesLinked.putIfAbsent(n, e)
+        for (e in sessionOverviews) tops += NoteItem(
             id = e.doc.id, kind = ItemKind.OTHER, source = ItemSource.SESSION_OVERVIEW, title = e.doc.title, owner = Owner(),
             author = e.doc.author, time = java.time.Instant.ofEpochMilli(e.time), payload = Payload.SessionOverview(e), children = emptyList(),
         )
-        for (e in sessionNotes) out += NoteItem(
-            id = "note:${e.doc.id}", kind = ItemKind.FILE, source = ItemSource.SESSION_NOTE, title = e.doc.summary,
-            owner = Owner(path = e.doc.path, first = e.doc.start, last = e.doc.end),
-            author = e.doc.author, time = java.time.Instant.ofEpochMilli(e.time), payload = Payload.SessionNote(e), children = emptyList(),
-        )
-        return out
+        for (e in sessionNotes) {
+            val item = NoteItem(
+                id = "note:${e.doc.id}", kind = ItemKind.FILE, source = ItemSource.SESSION_NOTE, title = e.doc.summary,
+                owner = Owner(path = e.doc.path, first = e.doc.start, last = e.doc.end),
+                author = e.doc.author, time = java.time.Instant.ofEpochMilli(e.time), payload = Payload.SessionNote(e), children = emptyList(),
+            )
+            val parent = notesLinked[e.doc.id]
+            if (parent != null) adopt(parent.doc.id, item) else tops += item
+        }
+        return tops.map { t ->
+            val extra = adopted[t.id].orEmpty()
+            if (extra.isEmpty()) t else t.copy(children = (t.children + extra).sortedWith(CHILD_ORDER))
+        }
+    }
+
+    private val NEWEST_SESSION = compareByDescending<DocIndex.Entry<SessionOverviewDoc>> { it.time }.thenBy { it.doc.id }
+    private val NEWEST_ITEM = compareByDescending<NoteItem, Instant?>(nullsFirst()) { it.time }.thenBy { it.id }
+    private val CHILD_ORDER = compareBy<NoteItem, String?>(nullsFirst()) { it.owner.path }
+        .thenBy(nullsFirst()) { it.owner.first }.thenBy { it.id }
+
+    /** A prose review contains every note of its commit (null = all); a document review the notes on the files it lists. */
+    private fun reviewPaths(r: Review): Set<String>? = if (r.content is ReviewContent.Prose) null else r.document?.files?.map { it.path }?.toSet().orEmpty()
+
+    private fun place(
+        thread: NoteItem, path: String,
+        reviews: List<NoteItem>, lists: Map<String, Set<String>?>,
+        overviews: List<NoteItem>, docs: Map<String, Set<String>>,
+        tops: MutableList<NoteItem>, adopt: (String, NoteItem) -> Unit,
+    ) {
+        val review = reviews.filter { lists[it.id].let { p -> p == null || path in p } }.minWithOrNull(NEWEST_ITEM)
+        val parent = review ?: overviews.filter { path in docs[it.id].orEmpty() }.minWithOrNull(NEWEST_ITEM)
+        if (parent != null) adopt(parent.id, thread) else tops += thread
     }
 
     private fun overviewItem(o: Overview, replies: List<NoteRecord>) = NoteItem(

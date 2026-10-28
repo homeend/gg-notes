@@ -48,8 +48,8 @@ class NoteItemsTest {
         return StoreModel.build(StoreReader().read(dir), headSha = c1, subjects = emptyMap())
     }
 
-    private fun sessionOverview(id: String, millis: Long): DocIndex.Entry<SessionOverviewDoc> {
-        val text = "+++\ntitle = 'Walk'\n+++\ntext [a](x.go:1)\n"
+    private fun sessionOverview(id: String, millis: Long, links: String = "[a](x.go:1)"): DocIndex.Entry<SessionOverviewDoc> {
+        val text = "+++\ntitle = 'Walk'\n+++\ntext $links\n"
         val doc = (SessionDocParser.overview(id, text.toByteArray()) as Parsed.Ok).doc
         return DocIndex.Entry(doc, size = 0, mtime = 0, time = millis)
     }
@@ -60,7 +60,10 @@ class NoteItemsTest {
         return DocIndex.Entry(doc, size = 0, mtime = 0, time = millis)
     }
 
-    private fun items(): List<NoteItem> = NoteItems.build(itemsModel(), emptyList(), emptyList())
+    private fun flatten(l: List<NoteItem>): List<NoteItem> = l.flatMap { listOf(it) + flatten(it.children) }
+
+    /** Every item, contained ones included. */
+    private fun items(): List<NoteItem> = flatten(NoteItems.build(itemsModel(), emptyList(), emptyList()))
 
     private fun byId(id: String): NoteItem = items().single { it.id == id }
 
@@ -158,5 +161,92 @@ class NoteItemsTest {
         assertTrue(item.children.all { it.source == ItemSource.STORE_THREAD })
         assertTrue(all.none { it.id in scopedIds })
         assertNotNull(item.children.first().time)
+    }
+
+    private fun tops(model: RepoModel = itemsModel()): List<NoteItem> = NoteItems.build(model, emptyList(), emptyList())
+
+    private fun childIds(parent: String, all: List<NoteItem> = tops()): List<String> = all.single { it.id == parent }.children.map { it.id }
+
+    @Test
+    fun `a note on a file the review lists is the review's child`() {
+        assertEquals(listOf("store:0n000002"), childIds("store:0r000001"))
+    }
+
+    @Test
+    fun `a note on a file only the overview lists is the overview's child`() {
+        assertEquals(listOf("store:0n000001", "store:0n000004"), childIds("store:0v000001"))
+        assertTrue(childIds("store:0v000001").isNotEmpty() && tops().none { it.id == "store:0n000001" })
+    }
+
+    @Test
+    fun `review before overview`() {
+        val dir = copyStore(
+            "examples/items/commits.toml" to "commits.toml",
+            "examples/items/previews.toml" to "previews.toml",
+            "examples/items/worktrees/cc36f09eabab0c81.toml" to "worktrees/cc36f09eabab0c81.toml",
+        )
+        val file = dir.resolve("commits.toml")
+        val text = Files.readString(file)
+        val old = "\"path\": \"b.go\","
+        assertTrue(text.contains(old))
+        Files.writeString(file, text.replace(old, "\"path\": \"a.go\","))
+        val model = StoreModel.build(StoreReader().read(dir), headSha = c1, subjects = emptyMap())
+        val all = tops(model)
+        assertEquals(listOf("store:0n000001", "store:0n000004"), childIds("store:0r000001", all))
+        assertTrue(childIds("store:0v000001", all).isEmpty())
+    }
+
+    @Test
+    fun `a prose review contains every note on its commit`() {
+        assertEquals(listOf("store:0n000006"), childIds("store:0r000003"))
+    }
+
+    @Test
+    fun `an uncontained note is a top file item`() {
+        val ids = tops().map { it.id }
+        assertTrue("store:0n000003" in ids)
+        assertTrue("store:0n000007" in ids)
+    }
+
+    @Test
+    fun `a working review contains live notes on its files`() {
+        assertEquals(listOf("store:0w000002"), childIds("store:0w000001"))
+        assertTrue(tops().any { it.id == "store:0w000003" })
+    }
+
+    @Test
+    fun `a session note linked by an overview is its child, and a top item again when the overview goes`() {
+        val n1 = "20261018T143202-1b2c"
+        val n2 = "20261018T143203-2c3d"
+        val o1 = sessionOverview("20261018T143201-9f3a", 5, "[n](note:$n1) [gone](note:20261018T000000-dead)")
+        val notes = listOf(sessionNote(n1, 6), sessionNote(n2, 7))
+        val with = NoteItems.build(itemsModel(), listOf(o1), notes)
+        assertEquals(listOf("note:$n1"), with.single { it.id == o1.doc.id }.children.map { it.id })
+        assertEquals(ItemSource.SESSION_NOTE, with.single { it.id == o1.doc.id }.children.single().source)
+        assertTrue(with.none { it.id == "note:$n1" })
+        assertTrue(with.any { it.id == "note:$n2" })
+        val without = NoteItems.build(itemsModel(), emptyList(), notes)
+        assertTrue(without.any { it.id == "note:$n1" } && without.any { it.id == "note:$n2" })
+        val older = sessionOverview("20261018T143100-aaaa", 4, "[n](note:$n1)")
+        val both = NoteItems.build(itemsModel(), listOf(older, o1), notes)
+        assertEquals(listOf("note:$n1"), both.single { it.id == o1.doc.id }.children.map { it.id })
+        assertTrue(both.single { it.id == older.doc.id }.children.isEmpty())
+    }
+
+    @Test
+    fun `every thread and session note appears exactly once`() {
+        val model = itemsModel()
+        val n1 = "20261018T143202-1b2c"
+        val o1 = sessionOverview("20261018T143201-9f3a", 5, "[n](note:$n1)")
+        val all = NoteItems.build(model, listOf(o1), listOf(sessionNote(n1, 6), sessionNote("20261018T143203-2c3d", 7)))
+        val flatAll = flatten(all)
+        val got = flatAll.map { it.id }
+        val expected = (
+            model.commits.flatMap { c -> c.files.flatMap { f -> f.threads } + c.reviews.flatMap { it.scopedThreads } } +
+                model.working.flatMap { w -> w.files.flatMap { f -> f.threads } + w.reviews.flatMap { it.scopedThreads } }
+            ).map { "store:" + it.root.id }
+        assertEquals(expected.sorted(), flatAll.filter { it.source == ItemSource.STORE_THREAD }.map { it.id }.sorted())
+        assertEquals(listOf("note:$n1", "note:20261018T143203-2c3d").sorted(), got.filter { it.startsWith("note:") }.sorted())
+        assertEquals(got.size, got.toSet().size)
     }
 }
