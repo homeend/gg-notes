@@ -49,8 +49,9 @@ name freeze on the first Marketplace upload.
 - Writes go THROUGH gg, never into the store files: the only write today is
   "Remove from gg Store" (`RemovalPlan` → `StoreRemoval` → `GgCli.batch`,
   i.e. `gg batch --keep-going` with `note rm <id>` / `overview rm <id>`
-  lines, children before parents). `GgCli` resolves `gg` from PATH (or
-  `ggnotes.gg`) to an absolute path and passes `ggnotes.env.*` through as
+  lines, children before parents). `GgCli` resolves `gg` to an absolute path
+  with `GgLocator` (IDE PATH, login-shell PATH, `GOBIN`/`GOPATH`/`~/go/bin`;
+  `ggnotes.gg` overrides, never required) and passes `ggnotes.env.*` through as
   environment, so the integration test's temp `XDG_STATE_HOME` reaches gg.
   Anything that blocks the EDT while waiting on `StoreRemoval` deadlocks
   (its completion closes the document on the EDT): poll with `waitFor`.
