@@ -24,8 +24,27 @@ delete notes, it turned out). The user wants:
    session docs get the same kind of address gg's store records have.
 4. **Two views, date first.** The tool window shows a **Date** view (default:
    day → everything added that day, newest first, an icon per kind) or a
-   **Type** view (Branch / Commit / Pull request / File / Other → items newest
-   first, each with its date). Goal: "find today's review" in one glance.
+   **Type** view (Branch / Commit / Pull request / File / Other → day → items).
+   Goal: "find today's review" in one glance. The user's own sketch:
+
+   ```text
+   By Date                          By Type
+   2026-10-10                       branch
+       commit review                    2026-10-10
+       branch A review                      branch A review
+       file overview                    2026-10-01
+       some other overview                  branch B review
+       branch B review                      branch C review
+   2026-10-01                       commit
+       some other overview              2026-10-10
+       branch B review                      commit review
+                                    file
+                                        2026-10-10
+                                            file overview
+                                    others
+                                        2026-10-01
+                                            some other overview
+   ```
 
 ## 2. Goals, non-goals, anti-goals
 
@@ -69,8 +88,15 @@ the IDE or an agent other than through gg; PR comments; a search box.
   replies/resolutions); the `gg` CLI does it with no gg process running
   (`gg note rm <id>`, `gg overview rm <id>`, or `gg batch`). Deleting a
   session doc is `rm` of its file.
-- The plugin finds `gg` without a setting since 0.4.6 (`GgLocator`, branch
-  `feat/gg-locate`).
+- The plugin finds `gg` without a setting since 0.4.6 (`GgLocator`, merged
+  to master as 7622bb8). Slices branch from master after it.
+- gg sets `Address.Branch` on a REVIEW only when it reviewed a branch
+  (`domain/review.go:224`), so the plugin's `kindOf` (branch set → BRANCH) is
+  gg's rule; gg's "was tip" (`ReviewKindOf`) is the same kind with a
+  different badge. On a permanent OVERVIEW gg stores the save-time branch as
+  a label only (`overview_save.go:70`).
+- An agent outside gg lists store ids with the CLI: `gg note list`
+  (gg on PATH; no gg process needed).
 
 ## 4. The parts
 
@@ -85,7 +111,7 @@ recipes:
 - **Deleting.** A session doc: delete its file. A gg-store record (an id the
   IDE lists with `source` `store-*`, §4.4): `command -v gg` (PowerShell
   `Get-Command gg`) → `gg note rm <id>` / `gg overview rm <id>` in the
-  worktree; no gg on PATH → tell the user in one line to use the tool
+  worktree (ids: `gg note list`, or the IDE's `files` once §4.4 ships); no gg on PATH → tell the user in one line to use the tool
   window's **Remove from gg Store**. Never edit store files.
 - **Focusing something that already exists** (new §6.1): when the IDE is
   live, send `files` (§4.4), pick the item by title / kind / date, send
@@ -138,11 +164,14 @@ session docs, each item:
 
 | kind | store | session doc |
 |---|---|---|
-| Commit | permanent overview; review with ReviewKind COMMIT or RANGE | overview with `commit` only |
-| Branch | review with ReviewKind BRANCH, or RANGE/PAIR with `preview_branch` | overview with `branch` |
+| Commit | permanent overview (its `branch` is a label, not an owner); review with ReviewKind COMMIT, RANGE or PAIR | overview with `commit` only |
+| Branch | review with ReviewKind BRANCH (whether the branch is still at the reviewed commit or not — "was tip" is a badge) | overview with `branch` (the agent declares it) |
 | Pull request | review with PULL_REQUEST or MERGE_PREVIEW; a `previews.toml` overview | overview with `preview` |
 | File | a line-note thread not contained in a top item | a note not linked by any overview |
-| Other | working review; shelf note; anything unclassified | overview with no owner |
+| Other | working review; anything unclassified | overview with no owner |
+
+Shelf notes stay out: SPEC-part2 §7 keeps them out until the shelf store has
+a reader spec, and the plugin does not read `shelf.toml`.
 
 **Top items only.** A line note that a review or overview contains is NOT a
 row of its own; it is a child of that item (reachable, not repeated).
@@ -151,6 +180,11 @@ Contained =
   among the review document's / overview document's files; for a prose review
   (no file list), any line note on the reviewed commit;
 - session: linked by `note:<id>` from an overview.
+
+A contained note has ONE parent: a review before an overview, then the
+newest. Visibility is today's: every commit's records in the store (missing
+commits marked) plus W's own working entries and W's session directory; no
+branch filter.
 
 **Date** = `created` (store record; session doc front matter), else the
 file's mtime; shown and grouped in the IDE's local time zone.
@@ -177,11 +211,19 @@ file's mtime; shown and grouped in the IDE's local time zone.
   (`AnAction` + `Toggleable`, not `ToggleAction` — CLAUDE.md), remembered per
   project (`PropertiesComponent`).
 - Replaces today's layout (Session group, commit groups, working entries).
-- **By Date:** `2026-10-28` day nodes, newest day first → top items newest
-  first, each with its kind icon, title, owner label (`a1b2c3d`, `feat/x`,
-  `PR 7`, `path:N`), author, time. Children expand under their item.
+- **By Date:** day nodes (`2026-10-28`), newest day first → the top items
+  added that day, newest first, flat — no owner level between day and item.
+  Each row: kind icon, title, owner label (`a1b2c3d`, `feat/x`, `PR 7`,
+  `path:N`), author, time. Children (contained notes) expand under their item.
 - **By Type:** Branch, Commit, Pull request, File, Other (empty groups
-  hidden) → items newest first with date and time shown.
+  hidden) → day nodes, newest first → items newest first (the same rows as
+  By Date).
+- **Delete** (replaces today's commit-group / worktree-group / file-node
+  removal, which have no node now): **Remove from gg Store** / **Delete** on
+  an item removes it with its children (a review with its contained notes);
+  a commit-owned store item also offers **Remove Everything on This Commit**
+  (today's `RemovalPlan.forCommit`). No delete on day or type nodes.
+  AGENTS.md §4's "group by commit" contract is rewritten to these views.
 - Several git roots: one repo node on top of either view, as today.
 - Everything else stays: opening, Delete / Remove from gg Store, Copy Link,
   `on screen`, `⚠ N unresolved`, missing commits.
@@ -209,12 +251,21 @@ format, how a child row looks, the `files` entry order, test fixture data.
 
 ## 7. Calls made without the user (check these)
 
-- Pull request and merge preview share the **Pull request** kind; PAIR
-  without a branch goes to **Other**.
-- Working reviews and shelf notes are **Other**.
+- Pull request and merge preview share the **Pull request** kind; RANGE and
+  PAIR are **Commit**; a store overview's `branch` is a label (→ Commit).
+- Working reviews are **Other**; shelf notes are left out (no reader spec).
+- A note contained twice has one parent: review before overview, then newest.
+- No branch/reachability filter: what is shown today stays shown.
 - "Contained in the review" (§4.3) includes, for a prose review, every line
   note on its commit.
 - Contained notes stay reachable as children of their item.
 - A commit-owned session note also shows on the working file (cold anchored),
   not only on the revision tab.
 - Item ids are namespaced (`store:`, `note:`) so they cannot collide.
+- Items within a day are newest first.
+- Delete as in §4.5: per item with children, plus "Remove Everything on This
+  Commit" on commit-owned store items; nothing on day/type nodes.
+- Focusing the new items from INSIDE gg is out of scope (user, 2026-10-28):
+  the plugin keeps today's `files` entries and `focused overview <id>
+  "<title>"` reply for session overviews unchanged so gg as shipped keeps
+  working; the new entries are added after them.
