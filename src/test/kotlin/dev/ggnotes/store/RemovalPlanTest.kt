@@ -59,13 +59,6 @@ class RemovalPlanTest {
     }
 
     @Test
-    fun `a file is every thread root on it`() {
-        val file = commit.files.single { it.path == "internal/x/gate.go" }
-        assertEquals(listOf("note rm b2c3d4e5", "note rm aa110001"), RemovalPlan.forFile(file).lines)
-        assertEquals(2, RemovalPlan.forFile(file).records)
-    }
-
-    @Test
     fun `a commit is everything under it, notes before reviews before overviews`() {
         val c = commit
         val plan = RemovalPlan.forCommit(c)
@@ -75,16 +68,6 @@ class RemovalPlanTest {
         assertEquals(expected, plan.lines)
         assertEquals(expected.size, plan.records)
         assertEquals(RemovalPlan.Kind.COMMIT, plan.kind)
-    }
-
-    @Test
-    fun `a working entry is its reviews and its live notes`() {
-        val w = model().working.single()
-        val plan = RemovalPlan.forWorking(w)
-        val expected = w.files.flatMap { f -> f.threads.map { "note rm ${it.root.id}" } } +
-            w.reviews.flatMap { r -> r.scopedThreads.map { "note rm ${it.root.id}" } + "note rm ${r.id}" }
-        assertEquals(expected, plan.lines)
-        assertEquals(RemovalPlan.Kind.WORKING, plan.kind)
     }
 
     @Test

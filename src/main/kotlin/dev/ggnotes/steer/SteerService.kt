@@ -277,6 +277,21 @@ class SteerService(private val project: Project) : Disposable {
         sessionChanged()
     }
 
+    /** EDT (the tree's row click): open the note's working file with the note's lines, where they sit now, selected. */
+    fun showNote(s: RootSession, entry: dev.ggnotes.session.DocIndex.Entry<dev.ggnotes.session.SessionNoteDoc>) {
+        val doc = entry.doc
+        val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(Path.of(s.topLevel, doc.path))
+            ?.takeIf { !it.isDirectory } ?: return
+        val p = s.marks.placementOf(doc)
+        val editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+            .openTextEditor(com.intellij.openapi.fileEditor.OpenFileDescriptor(project, vf, (p.start - 1).coerceAtLeast(0), 0), true) ?: return
+        val text = editor.document
+        if (text.lineCount == 0) return
+        val first = p.start.coerceIn(1, text.lineCount)
+        val last = p.end.coerceIn(first, text.lineCount)
+        editor.selectionModel.setSelection(text.getLineStartOffset(first - 1), text.getLineEndOffset(last - 1))
+    }
+
     /** Delete (the tree's row action): unlink the overview's file; the reconcile that follows drops the row and closes its document. */
     fun deleteOverview(s: RootSession, id: String): Boolean {
         val gone = s.docs.delete(dev.ggnotes.session.DocName(id, dev.ggnotes.session.DocKind.OVERVIEW))

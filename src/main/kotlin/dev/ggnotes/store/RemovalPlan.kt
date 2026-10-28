@@ -11,7 +11,7 @@ import dev.ggnotes.items.NoteItem
  */
 data class RemovalPlan(val kind: Kind, val label: String, val lines: List<String>) {
 
-    enum class Kind { OVERVIEW, REVIEW, THREAD, REPLY, FILE, COMMIT, WORKING }
+    enum class Kind { OVERVIEW, REVIEW, THREAD, REPLY, COMMIT }
 
     /** How many store records the lines name (replies a root cascades to are not counted). */
     val records: Int get() = lines.size
@@ -49,16 +49,9 @@ data class RemovalPlan(val kind: Kind, val label: String, val lines: List<String
         private fun childLines(item: NoteItem): List<String> =
             item.children.flatMap { c -> forItem(c)?.lines.orEmpty() }
 
-        fun forFile(f: FileEntry) = RemovalPlan(Kind.FILE, f.path, threadLines(f.threads))
-
         fun forCommit(c: CommitEntry) = RemovalPlan(
             Kind.COMMIT, c.shortSha,
             c.files.flatMap { threadLines(it.threads) } + c.reviews.flatMap { reviewLines(it) } + c.overviews.map { overview(it.id) },
-        )
-
-        fun forWorking(w: WorkingEntry) = RemovalPlan(
-            Kind.WORKING, w.worktree,
-            w.files.flatMap { threadLines(it.threads) } + w.reviews.flatMap { reviewLines(it) },
         )
 
         private fun lineSuffix(n: NoteRecord): String = when {

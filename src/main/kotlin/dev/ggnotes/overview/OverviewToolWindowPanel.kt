@@ -1,34 +1,46 @@
 package dev.ggnotes.overview
 
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.ScrollPaneFactory
+import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.tree.TreeUtil
 import dev.ggnotes.GgNotesBundle
-import dev.ggnotes.store.CommitEntry
+import dev.ggnotes.items.ItemKind
+import dev.ggnotes.items.ItemViews
+import dev.ggnotes.items.NoteItem
+import dev.ggnotes.items.NoteItems
+import dev.ggnotes.items.Payload
+import dev.ggnotes.items.SessionRemoval
 import dev.ggnotes.store.DocumentResult
-import dev.ggnotes.store.FileEntry
 import dev.ggnotes.store.NoteRecord
-import dev.ggnotes.store.NoteThread
 import dev.ggnotes.store.Overview
 import dev.ggnotes.store.OverviewGrouping
-import dev.ggnotes.store.Review
+import dev.ggnotes.store.RemovalPlan
 import dev.ggnotes.store.ReviewContent
 import dev.ggnotes.store.Reviews
 import dev.ggnotes.store.RowBadge
-import dev.ggnotes.store.WorkingEntry
+import dev.ggnotes.steer.SteerService
 import git4idea.repo.GitRepository
 import java.awt.BorderLayout
+import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import javax.swing.Icon
 import javax.swing.JPanel
 import javax.swing.JTree
 import javax.swing.tree.DefaultMutableTreeNode
@@ -36,11 +48,10 @@ import javax.swing.tree.DefaultTreeModel
 import javax.swing.tree.TreeSelectionModel
 
 /**
- * The "GgNotes" tool window: per repository, the commits that carry
- * overviews, reviews or line notes (HEAD's first, then newest), each with
- * its overviews, its reviews (scoped notes beneath them), its files with
- * note threads; then the working-tree entries of this checkout
- * (SPEC-part2 §8). Below, the rendered document of the selected row.
+ * The "Agent Notes" tool window: per repository, the note items (store overviews,
+ * reviews and note threads; session overviews and notes) By Date (day → items)
+ * or By Type (kind → day → items), a contained note under its review or
+ * overview. Below, the rendered document of the selected row.
  */
 class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPanel(true, true), Disposable, OverviewUi {
 
@@ -58,20 +69,31 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     private var userSized = false
 
     private class RepoNode(val repo: GitRepository)
-    private class GroupNode(val entry: CommitEntry, val repo: GitRepository)
-    private class WorkingNode(val entry: WorkingEntry, val repo: GitRepository)
-    /** [tips]: the repository's branch tips at refresh time, for the `branch x` / `was x` badge. */
-    private class OverviewNode(val overview: Overview, val repo: GitRepository, val replies: List<NoteRecord>, val tips: Map<String, String?>)
-    private class ReviewNode(val review: Review, val repo: GitRepository, val treeChanged: List<String> = emptyList(), val tips: Map<String, String?> = emptyMap())
-    private class FileNode(val file: FileEntry, val commit: String, val worktree: String?, val repo: GitRepository)
-    private class ThreadNode(val thread: NoteThread, val commit: String, val worktree: String?, val repo: GitRepository)
+    private class TypeNode(val kind: ItemKind)
+    /** [day] == null is the "No date" group. */
+    private class DayNode(val day: LocalDate?)
+    /**
+     * One note item. [session] is its root's steer session (null when none); [tips] the repository's
+     * branch tips at refresh time (`branch x` / `was x`); [treeChanged] a working review's changed
+     * files; [subject] the owner commit's subject (null: no commit, or not in the repository);
+     * [unresolved] a session overview's unresolved anchors.
+     */
+    private class ItemNode(
+        val item: NoteItem,
+        val repo: GitRepository,
+        val session: SteerService.RootSession?,
+        val tips: Map<String, String?>,
+        val treeChanged: List<String>,
+        val subject: String?,
+        val unresolved: List<String>,
+    )
     private class ReplyNode(val reply: NoteRecord)
-    /** "Session": the overview files of the worktree's session docs directory (session-docs SPEC §4.4). */
-    private class SessionGroupNode(val repo: GitRepository)
-    /** [identity] is the viewer form's identity, so "on screen" is judged at paint time against the open document. */
-    private class SessionOverviewNode(val row: dev.ggnotes.steer.SteerService.SessionRow, val repo: GitRepository, val identity: String)
 
-    private val steer = dev.ggnotes.steer.SteerService.getInstance(project)
+    private val steer = SteerService.getInstance(project)
+    private val renderer = Renderer()
+    private val copyLink = CopyLinkAction()
+    private val remove = RemoveFromStoreAction()
+    private val removeCommit = RemoveCommitAction()
 
     private companion object {
         /** Unscaled px around the rows: the scroll pane's border and a little air under the last row. */
@@ -89,22 +111,12 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         tree.isRootVisible = false
         tree.showsRootHandles = true
         tree.selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
-        tree.cellRenderer = Renderer()
+        tree.cellRenderer = renderer
         tree.emptyText.text = GgNotesBundle.message("toolwindow.empty")
         tree.addTreeSelectionListener {
             if (syncing) return@addTreeSelectionListener
             val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return@addTreeSelectionListener
-            when (val u = node.userObject) {
-                is OverviewNode -> service.open(u.overview, u.repo)
-                is ReviewNode -> service.openReview(u.review, u.repo)
-                is FileNode -> service.openNotes(u.file.threads, u.file.path, u.commit, u.worktree, u.repo)
-                is ThreadNode -> service.openNotes(listOf(u.thread), u.thread.root.address.path, u.commit, u.worktree, u.repo)
-                is ReplyNode -> (node.parent as? DefaultMutableTreeNode)?.userObject.let { p ->
-                    if (p is ThreadNode) service.openNotes(listOf(p.thread), p.thread.root.address.path, p.commit, p.worktree, p.repo)
-                }
-                is SessionOverviewNode -> steer.showOverview(u.row.session, u.row.entry, keepAnchor = false)
-                else -> Unit
-            }
+            itemNodeOf(node)?.let { open(it) }
         }
         TreeUtil.installActions(tree)
         // right-click: select the row under the pointer (so the document shows what the menu is about), then the menu
@@ -117,11 +129,9 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
                 if (tree.selectionPath != path) tree.selectionPath = path
             }
         })
-        // the row's Delete: the context menu and the Delete key run the same confirm-then-delete
-        val remove = RemoveFromStoreAction()
+        // the row's Delete: the context menu and the Delete key run the same confirm-then-delete;
         // Copy Link: a session row's line for an agent (the menu item and Ctrl+C are one action)
-        val copyLink = CopyLinkAction()
-        com.intellij.ui.PopupHandler.installPopupMenu(tree, com.intellij.openapi.actionSystem.DefaultActionGroup(copyLink, remove), "GgNotesTreePopup")
+        com.intellij.ui.PopupHandler.installPopupMenu(tree, com.intellij.openapi.actionSystem.DefaultActionGroup(popupActions), "GgNotesTreePopup")
         remove.registerCustomShortcutSet(com.intellij.openapi.actionSystem.CommonShortcuts.getDelete(), tree, this)
         copyLink.registerCustomShortcutSet(com.intellij.openapi.actionSystem.CommonShortcuts.getCopy(), tree, this)
         // a double-click opens the row (its first click selected it) and gives the document the whole window
@@ -169,44 +179,50 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
 
     private fun rebuild() {
         val snapshot = service.snapshot
-        val selectedIdentity = service.open?.overview?.identity
-        val selectedRepo = service.open?.repo
+        val open = service.open
+        val zone = ZoneId.systemDefault()
+        val view = service.view
         root.removeAllChildren()
         val messages = ArrayList<String>()
         val multi = snapshot.repos.size > 1
         for (repo in snapshot.repos) {
             val parent = if (multi) DefaultMutableTreeNode(RepoNode(repo.repo)).also { root.add(it) } else root
-            // session documents first: they are what an agent is showing on this worktree right now
-            val sessionRows = steer.sessionOverviews(repo.repo.root)
-            if (sessionRows.isNotEmpty()) {
-                val sn = DefaultMutableTreeNode(SessionGroupNode(repo.repo))
-                parent.add(sn)
-                for (row in sessionRows) sn.add(DefaultMutableTreeNode(SessionOverviewNode(row, repo.repo, steer.sessionIdentity(row.session, row.entry.doc))))
-            }
             repo.error?.let { messages += it }
             repo.contents.problems.forEach { messages += "${repo.repo.root.name}: $it" }
             if (repo.contents.newerFormat) messages += GgNotesBundle.message("toolwindow.newerFormat", repo.repo.root.name)
-            for (entry in repo.model.commits) {
-                if (entry.isEmpty) continue
-                val gn = DefaultMutableTreeNode(GroupNode(entry, repo.repo))
-                parent.add(gn)
-                for (o in entry.overviews) gn.add(DefaultMutableTreeNode(OverviewNode(o, repo.repo, entry.overviewReplies[o.id].orEmpty(), repo.branchTips)))
-                for (r in entry.reviews) {
-                    val rn = DefaultMutableTreeNode(ReviewNode(r, repo.repo, tips = repo.branchTips))
-                    gn.add(rn)
-                    for (t in r.scopedThreads) {
-                        val tn = DefaultMutableTreeNode(ThreadNode(t, entry.commit, null, repo.repo))
-                        rn.add(tn)
-                        for (reply in t.replies) tn.add(DefaultMutableTreeNode(ReplyNode(reply)))
-                    }
+            val s = steer.sessionFor(repo.repo.root)
+            val items = NoteItems.build(repo.model, s?.docs?.index?.overviews().orEmpty(), s?.docs?.index?.notes().orEmpty())
+            fun itemNode(item: NoteItem): DefaultMutableTreeNode {
+                val p = item.payload
+                val node = DefaultMutableTreeNode(ItemNode(
+                    item, repo.repo, s, repo.branchTips,
+                    treeChanged = (p as? Payload.StoreReview)?.let { repo.treeChanged[it.review.id] }.orEmpty(),
+                    subject = item.owner.commit?.let { c -> repo.model.commits.firstOrNull { it.commit == c }?.subject },
+                    unresolved = if (p is Payload.SessionOverview && s != null) steer.unresolved(s, p.entry.doc) else emptyList(),
+                ))
+                val replies = when (p) {
+                    is Payload.StoreThread -> p.thread.replies
+                    is Payload.StoreOverview -> p.replies
+                    else -> emptyList()
                 }
-                for (f in entry.files) gn.add(fileNode(f, entry.commit, null, repo.repo))
+                for (r in replies) node.add(DefaultMutableTreeNode(ReplyNode(r)))
+                for (c in item.children) node.add(itemNode(c))
+                return node
             }
-            for (w in repo.model.working) {
-                val wn = DefaultMutableTreeNode(WorkingNode(w, repo.repo))
-                parent.add(wn)
-                for (r in w.reviews) wn.add(DefaultMutableTreeNode(ReviewNode(r, repo.repo, repo.treeChanged[r.id].orEmpty(), repo.branchTips)))
-                for (f in w.files) wn.add(fileNode(f, "", w.worktree, repo.repo))
+            fun dayNodes(into: DefaultMutableTreeNode, days: List<dev.ggnotes.items.DayGroup>) {
+                for (d in days) {
+                    val dn = DefaultMutableTreeNode(DayNode(d.day))
+                    into.add(dn)
+                    for (item in d.items) dn.add(itemNode(item))
+                }
+            }
+            when (view) {
+                NoteView.DATE -> dayNodes(parent, ItemViews.byDate(items, zone))
+                NoteView.TYPE -> for (t in ItemViews.byType(items, zone)) {
+                    val tn = DefaultMutableTreeNode(TypeNode(t.kind))
+                    parent.add(tn)
+                    dayNodes(tn, t.days)
+                }
             }
         }
         if (snapshot.repos.isEmpty()) messages += GgNotesBundle.message("toolwindow.noGit")
@@ -214,7 +230,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         status.isVisible = messages.isNotEmpty()
         model.reload()
         TreeUtil.expandAll(tree)
-        if (selectedIdentity != null && selectedRepo != null) selectIdentity(selectedIdentity, selectedRepo)
+        if (open != null) selectShowing(open)
         fitTree()
     }
 
@@ -233,27 +249,55 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         splitter.proportion = proportion
     }
 
-    /** The removal a row stands for (every row kind has one), with the repository whose store holds it. */
-    private fun planFor(node: DefaultMutableTreeNode): Pair<dev.ggnotes.store.RemovalPlan, GitRepository>? {
-        val parentRepo = generateSequence(node.parent as? DefaultMutableTreeNode) { it.parent as? DefaultMutableTreeNode }
-            .mapNotNull { (it.userObject as? RepoNode)?.repo }.firstOrNull()
-        fun repoOrSingle(repo: GitRepository?) = repo ?: parentRepo ?: service.snapshot.repos.singleOrNull()?.repo
-        return when (val u = node.userObject) {
-            is OverviewNode -> dev.ggnotes.store.RemovalPlan.forOverview(u.overview) to u.repo
-            is ReviewNode -> dev.ggnotes.store.RemovalPlan.forReview(u.review) to u.repo
-            is FileNode -> dev.ggnotes.store.RemovalPlan.forFile(u.file) to u.repo
-            is ThreadNode -> dev.ggnotes.store.RemovalPlan.forThread(u.thread) to u.repo
-            is ReplyNode -> repoOrSingle(null)?.let { dev.ggnotes.store.RemovalPlan.forReply(u.reply) to it }
-            is GroupNode -> dev.ggnotes.store.RemovalPlan.forCommit(u.entry) to u.repo
-            is WorkingNode -> dev.ggnotes.store.RemovalPlan.forWorking(u.entry) to u.repo
-            else -> null
+    /** The item a row opens: the row's own item, or a reply's parent item. */
+    private fun itemNodeOf(node: DefaultMutableTreeNode): ItemNode? = when (val u = node.userObject) {
+        is ItemNode -> u
+        is ReplyNode -> (node.parent as? DefaultMutableTreeNode)?.userObject as? ItemNode
+        else -> null
+    }
+
+    /** Open [n]'s record as the row's click does. */
+    private fun open(n: ItemNode) {
+        when (val p = n.item.payload) {
+            is Payload.StoreOverview -> service.open(p.overview, n.repo)
+            is Payload.StoreReview -> service.openReview(p.review, n.repo)
+            is Payload.StoreThread -> service.openNotes(listOf(p.thread), p.thread.root.address.path, p.commit, p.worktree, n.repo)
+            is Payload.SessionOverview -> n.session?.let { steer.showOverview(it, p.entry, keepAnchor = false) }
+            is Payload.SessionNote -> n.session?.let { steer.showNote(it, p.entry) }
         }
     }
 
-    /** The selected row's link (a session overview row only), or null. */
+    /** Whether the open document [open] is [n]'s record (a session note opens an editor, never a document). */
+    private fun shows(n: ItemNode, open: Overview): Boolean = when (val p = n.item.payload) {
+        is Payload.StoreOverview -> p.overview.identity == open.identity
+        is Payload.StoreReview -> open.viewKind == "review:${p.review.id}:"
+        is Payload.StoreThread -> open.viewKind == "notes:${p.thread.root.id}:"
+        is Payload.SessionOverview -> n.session?.let { steer.sessionIdentity(it, p.entry.doc) == open.identity } == true
+        is Payload.SessionNote -> false
+    }
+
+    /** Select the row of the open document without opening it again. */
+    private fun selectShowing(open: OpenOverview) {
+        val match = TreeUtil.findNode(root) { n -> (n.userObject as? ItemNode)?.let { it.repo == open.repo && shows(it, open.overview) } == true } ?: return
+        syncing = true
+        try {
+            TreeUtil.selectNode(tree, match)
+        } finally {
+            syncing = false
+        }
+    }
+
+    private val selectedNode: DefaultMutableTreeNode? get() = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
+
+    /** The selected row's link (a session overview or note item only), or null. */
     private fun linkOfSelected(): String? {
-        val u = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? SessionOverviewNode ?: return null
-        return steer.overviewLink(u.row.session, u.row.entry.doc)
+        val n = selectedNode?.userObject as? ItemNode ?: return null
+        val s = n.session ?: return null
+        return when (val p = n.item.payload) {
+            is Payload.SessionOverview -> steer.overviewLink(s, p.entry.doc)
+            is Payload.SessionNote -> steer.noteLink(s, p.entry.doc)
+            else -> null
+        }
     }
 
     /** Copy the selected row's link to the clipboard and return it; null (and the clipboard untouched) for a row without one. */
@@ -264,100 +308,116 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     }
 
     /** "Copy Link" on a session row: one line naming the document, its worktree and its file, for an agent to read. */
-    private inner class CopyLinkAction : com.intellij.openapi.actionSystem.AnAction(
+    private inner class CopyLinkAction : AnAction(
         GgNotesBundle.message("action.GgNotes.CopyLink.text"),
         GgNotesBundle.message("action.GgNotes.CopyLink.description"),
-        com.intellij.icons.AllIcons.Actions.Copy,
+        AllIcons.Actions.Copy,
     ) {
-        override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.EDT
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
-        override fun update(e: com.intellij.openapi.actionSystem.AnActionEvent) {
-            e.presentation.isEnabledAndVisible = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject is SessionOverviewNode
+        override fun update(e: AnActionEvent) {
+            val n = selectedNode?.userObject as? ItemNode
+            e.presentation.isEnabledAndVisible = n?.session != null &&
+                (n.item.payload is Payload.SessionOverview || n.item.payload is Payload.SessionNote)
         }
 
-        override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) {
+        override fun actionPerformed(e: AnActionEvent) {
             copyLinkOfSelected()
         }
     }
 
-    /** The tree's context menu: hand the selected row's records to gg for deletion, after a confirmation. */
-    private inner class RemoveFromStoreAction : com.intellij.openapi.actionSystem.AnAction(
+    private fun confirm(question: String, button: String): Boolean = Messages.showYesNoDialog(
+        project, question, GgNotesBundle.message("remove.confirm.title"),
+        button, Messages.getCancelButton(), Messages.getWarningIcon(),
+    ) == Messages.YES
+
+    /** A store plan's question: the kind's sentence, then that gg does the deleting. */
+    private fun storeQuestion(plan: RemovalPlan): String =
+        GgNotesBundle.message("remove.confirm.${plan.kind.name}", plan.label, plan.records) + "\n\n" + GgNotesBundle.message("remove.confirm.note")
+
+    /** The store removal a row stands for, with the repository whose store holds it; null for a session item. */
+    private fun planFor(node: DefaultMutableTreeNode): Pair<RemovalPlan, GitRepository>? = when (val u = node.userObject) {
+        is ItemNode -> RemovalPlan.forItem(u.item)?.let { it to u.repo }
+        is ReplyNode -> itemNodeOf(node)?.let { RemovalPlan.forReply(u.reply) to it.repo }
+        else -> null
+    }
+
+    /** The tree's context menu: delete the selected item (store records through gg, session items by unlinking their files). */
+    private inner class RemoveFromStoreAction : AnAction(
         GgNotesBundle.message("action.GgNotes.RemoveFromStore.text"),
         GgNotesBundle.message("action.GgNotes.RemoveFromStore.description"),
-        com.intellij.icons.AllIcons.Actions.GC,
+        AllIcons.Actions.GC,
     ) {
-        override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.EDT
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
-        override fun update(e: com.intellij.openapi.actionSystem.AnActionEvent) {
-            val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
-            val session = node?.userObject is SessionOverviewNode
-            e.presentation.isEnabledAndVisible = node != null && (session || planFor(node)?.first?.lines?.isNotEmpty() == true)
-            // a session row's Delete unlinks a file, not store records, and the label says so
+        override fun update(e: AnActionEvent) {
+            val node = selectedNode
+            val n = node?.userObject as? ItemNode
+            val session = n != null && SessionRemoval.of(n.item) != null
+            e.presentation.isEnabledAndVisible = node != null &&
+                (if (session) n?.session != null else planFor(node)?.first?.lines?.isNotEmpty() == true)
+            // a session item's Delete unlinks files, not store records, and the label says so
             e.presentation.text = GgNotesBundle.message(if (session) "action.GgNotes.RemoveFromSession.text" else "action.GgNotes.RemoveFromStore.text")
         }
 
-        override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) {
-            val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return
-            (node.userObject as? SessionOverviewNode)?.let { u ->
-                // a session overview: its file is unlinked (session-docs SPEC §4.4); every gg reader of the worktree loses it
-                val answer = com.intellij.openapi.ui.Messages.showYesNoDialog(
-                    project, GgNotesBundle.message("remove.confirm.SESSION", u.row.entry.doc.title, u.row.entry.doc.id),
-                    GgNotesBundle.message("remove.confirm.title"),
-                    GgNotesBundle.message("action.GgNotes.RemoveFromSession.text"), com.intellij.openapi.ui.Messages.getCancelButton(),
-                    com.intellij.openapi.ui.Messages.getWarningIcon())
-                if (answer == com.intellij.openapi.ui.Messages.YES) steer.deleteOverview(u.row.session, u.row.entry.doc.id)
+        override fun actionPerformed(e: AnActionEvent) {
+            val node = selectedNode ?: return
+            val n = node.userObject as? ItemNode
+            val removal = n?.let { SessionRemoval.of(it.item) }
+            if (n != null && removal != null) {
+                // session docs (session-docs SPEC §4.4): unlink the files; every gg reader of the worktree loses them
+                val s = n.session ?: return
+                val question = when (val p = n.item.payload) {
+                    is Payload.SessionNote -> GgNotesBundle.message("remove.confirm.SESSION_NOTE", p.entry.doc.summary, p.entry.doc.id)
+                    is Payload.SessionOverview ->
+                        if (removal.notes.isEmpty()) GgNotesBundle.message("remove.confirm.SESSION", p.entry.doc.title, p.entry.doc.id)
+                        else GgNotesBundle.message("remove.confirm.SESSION_WITH_NOTES", p.entry.doc.title, p.entry.doc.id, removal.notes.size)
+                    else -> return
+                }
+                if (!confirm(question, GgNotesBundle.message("action.GgNotes.RemoveFromSession.text"))) return
+                for (id in removal.notes) steer.deleteNote(s, id)
+                for (id in removal.overviews) steer.deleteOverview(s, id)
                 return
             }
             val (plan, repo) = planFor(node) ?: return
-            val question = GgNotesBundle.message("remove.confirm.${plan.kind.name}", plan.label, plan.records) + "\n\n" +
-                GgNotesBundle.message("remove.confirm.note")
-            val answer = com.intellij.openapi.ui.Messages.showYesNoDialog(
-                project, question, GgNotesBundle.message("remove.confirm.title"),
-                GgNotesBundle.message("action.GgNotes.RemoveFromStore.text"), com.intellij.openapi.ui.Messages.getCancelButton(),
-                com.intellij.openapi.ui.Messages.getWarningIcon())
-            if (answer != com.intellij.openapi.ui.Messages.YES) return
+            if (!confirm(storeQuestion(plan), GgNotesBundle.message("action.GgNotes.RemoveFromStore.text"))) return
             StoreRemoval.perform(project, repo, plan)
         }
     }
 
-    private fun fileNode(f: FileEntry, commit: String, worktree: String?, repo: GitRepository): DefaultMutableTreeNode {
-        val fn = DefaultMutableTreeNode(FileNode(f, commit, worktree, repo))
-        for (t in f.threads) {
-            val tn = DefaultMutableTreeNode(ThreadNode(t, commit, worktree, repo))
-            fn.add(tn)
-            for (r in t.replies) tn.add(DefaultMutableTreeNode(ReplyNode(r)))
+    /** "Remove Everything on This Commit": every store record of the selected store item's commit, through gg. */
+    private inner class RemoveCommitAction : AnAction(
+        GgNotesBundle.message("action.GgNotes.RemoveCommit.text"),
+        GgNotesBundle.message("action.GgNotes.RemoveCommit.description"),
+        AllIcons.Actions.GC,
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        /** The selected store item's commit entry in its repository's model, or null. */
+        private fun target(): Pair<dev.ggnotes.store.CommitEntry, GitRepository>? {
+            val n = selectedNode?.userObject as? ItemNode ?: return null
+            if (SessionRemoval.of(n.item) != null) return null
+            val commit = n.item.owner.commit ?: return null
+            val entry = service.snapshot.repos.firstOrNull { it.repo == n.repo }?.model?.commits?.firstOrNull { it.commit == commit } ?: return null
+            return if (entry.isEmpty) null else entry to n.repo
         }
-        return fn
-    }
 
-    private fun identityOf(u: Any?): String? = when (u) {
-        is OverviewNode -> u.overview.identity
-        is ReviewNode -> "review:${u.review.id}:" + (u.review.record.prNumber?.let { "pr:$it" } ?: u.review.record.address.commit) + "\u0000" + u.review.title.trim()
-        is SessionOverviewNode -> u.identity
-        else -> null
-    }
+        override fun update(e: AnActionEvent) {
+            e.presentation.isEnabledAndVisible = target() != null
+        }
 
-    private fun repoOf(u: Any?): GitRepository? = when (u) {
-        is OverviewNode -> u.repo
-        is ReviewNode -> u.repo
-        is SessionOverviewNode -> u.repo
-        else -> null
-    }
-
-    private fun selectIdentity(identity: String, repo: GitRepository) {
-        val match = TreeUtil.findNode(root) { n -> identityOf(n.userObject) == identity && repoOf(n.userObject) == repo } ?: return
-        syncing = true
-        try {
-            TreeUtil.selectNode(tree, match)
-        } finally {
-            syncing = false
+        override fun actionPerformed(e: AnActionEvent) {
+            val (entry, repo) = target() ?: return
+            val plan = RemovalPlan.forCommit(entry)
+            if (!confirm(storeQuestion(plan), GgNotesBundle.message("action.GgNotes.RemoveFromStore.text"))) return
+            StoreRemoval.perform(project, repo, plan)
         }
     }
 
     override fun showOverview(open: OpenOverview?) {
         document.show(open)
         if (open != null) {
-            selectIdentity(open.overview.identity, open.repo)
+            selectShowing(open)
         } else {
             // Close leaves no row selected: a selected row stays "shown" to the tree, so a click on
             // it would fire no selection change and the document could not be reopened from it
@@ -385,7 +445,32 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     }
 
     /** The selected row's user object, for tests. */
-    internal val selectedRow: Any? get() = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject
+    internal val selectedRow: Any? get() = selectedNode?.userObject
+
+    /** The selected item's [NoteItem.id] (null for a day, kind, repository or reply row), for tests. */
+    internal val selectedItemId: String? get() = (selectedNode?.userObject as? ItemNode)?.item?.id
+
+    /** The tree's context menu, in its order. */
+    internal val popupActions: List<AnAction> get() = listOf(copyLink, remove, removeCommit)
+
+    /** The rendered first text fragment of every row at [depth] (0 = the top rows), in tree order, for tests. */
+    internal fun rowTexts(depth: Int): List<String> {
+        val out = ArrayList<String>()
+        fun walk(node: DefaultMutableTreeNode, level: Int) {
+            for (i in 0 until node.childCount) {
+                val c = node.getChildAt(i) as DefaultMutableTreeNode
+                if (level == depth) {
+                    val comp = renderer.getTreeCellRendererComponent(tree, c, false, true, c.isLeaf, 0, false) as SimpleColoredComponent
+                    val it = comp.iterator()
+                    out += if (it.hasNext()) it.next() else ""
+                } else {
+                    walk(c, level + 1)
+                }
+            }
+        }
+        walk(root, 0)
+        return out
+    }
 
     /** The tree, for tests (the Delete key binding lives on it). */
     internal val treeComponent: JTree get() = tree
@@ -393,12 +478,14 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     /**
      * What a double-click on a row does: with a document row selected (selecting it opened it,
      * or started opening it in the background), hide the list so the document takes the whole
-     * window — the Document Only state, which the toolbar toggle or Close brings back.
+     * window — the Document Only state, which the toolbar toggle or Close brings back. A session
+     * note opens an editor, not a document, so it leaves the list alone.
      */
     internal fun openSelectedFullArea() {
-        val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return
-        val opensADocument = when (node.userObject) {
-            is OverviewNode, is ReviewNode, is FileNode, is ThreadNode, is ReplyNode, is SessionOverviewNode -> true
+        val node = selectedNode ?: return
+        val opensADocument = when (val u = node.userObject) {
+            is ItemNode -> u.item.payload !is Payload.SessionNote
+            is ReplyNode -> true
             else -> false
         }
         if (!opensADocument) return
@@ -427,80 +514,16 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
 
     private inner class Renderer : ColoredTreeCellRenderer() {
         private val date = DateTimeFormatter.ISO_LOCAL_DATE
+        private val time = DateTimeFormatter.ofPattern("HH:mm")
+        private val dateTime = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
         override fun customizeCellRenderer(tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean) {
-            when (val u = (value as? DefaultMutableTreeNode)?.userObject) {
+            val node = value as? DefaultMutableTreeNode
+            when (val u = node?.userObject) {
                 is RepoNode -> append(u.repo.root.name, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
-                is SessionGroupNode -> {
-                    // the header is the whole badge ("Session"); the rows under it carry none
-                    append(GgNotesBundle.message("toolwindow.session"), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
-                    toolTipText = GgNotesBundle.message("toolwindow.session.tooltip")
-                }
-                is SessionOverviewNode -> {
-                    // SPEC §4.4: title, author, age, anchor count, whether it is on screen
-                    val o = u.row.entry.doc
-                    append(o.title.ifBlank { "(untitled)" }, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                    val age = com.intellij.util.text.DateFormatUtil.formatPrettyDateTime(u.row.entry.time)
-                    append("  " + listOf(o.author, age, GgNotesBundle.message("document.anchors", o.anchors.size)).joinToString(" · "), SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                    // judged now, not at build time: Close or another row's click changes it without a rebuild
-                    if (service.open?.overview?.identity == u.identity) append("  " + GgNotesBundle.message("toolwindow.shown"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
-                    if (u.row.unresolved.isNotEmpty()) append("  ⚠ " + GgNotesBundle.message("toolwindow.unresolved", u.row.unresolved.size), SimpleTextAttributes.ERROR_ATTRIBUTES)
-                    toolTipText = u.row.session.docs.fileOf(dev.ggnotes.session.DocName(o.id, dev.ggnotes.session.DocKind.OVERVIEW)).toString()
-                }
-                is GroupNode -> {
-                    // a commit that only carries one pull request's records is that PR's group
-                    val pr = prOf(u.entry)
-                    append(if (pr != null) GgNotesBundle.message("toolwindow.badge.pr", pr) else u.entry.shortSha, SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
-                    append("  ")
-                    append(u.entry.subject ?: GgNotesBundle.message("toolwindow.unknownCommit"),
-                        if (u.entry.subject != null) SimpleTextAttributes.REGULAR_ATTRIBUTES else SimpleTextAttributes.ERROR_ATTRIBUTES)
-                    if (u.entry.isHead) append("  HEAD", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
-                    toolTipText = u.entry.commit
-                }
-                is WorkingNode -> {
-                    append(GgNotesBundle.message("toolwindow.working"), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
-                    append("  " + u.entry.worktree, SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                }
-                is OverviewNode -> {
-                    val o = u.overview
-                    append(o.title.ifBlank { "(untitled)" }, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                    append("  " + tail(o.author, o.updated), SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                    badge(RowBadge.of(o, u.tips[o.branch]))
-                    if (u.replies.isNotEmpty()) append("  " + GgNotesBundle.message("toolwindow.replies", u.replies.size), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
-                    if (o.document is DocumentResult.CannotRender) append("  " + GgNotesBundle.message("toolwindow.cannotRender"), SimpleTextAttributes.ERROR_ATTRIBUTES)
-                    toolTipText = OverviewGrouping.rowText(o)
-                }
-                is ReviewNode -> {
-                    val r = u.review.record
-                    append(u.review.title.ifBlank { "Review" }, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                    append("  " + tail(r.author, r.updated ?: r.created), SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                    badge(RowBadge.ofReview(u.review, u.tips[r.address.branch]))
-                    val counts = u.review.counts()
-                    if (counts.isNotEmpty()) append("  " + Reviews.countsText(counts), SimpleTextAttributes.REGULAR_ITALIC_ATTRIBUTES)
-                    when (u.review.content) {
-                        is ReviewContent.Prose -> append("  prose", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
-                        is ReviewContent.CannotRender -> append("  " + GgNotesBundle.message("toolwindow.cannotRender"), SimpleTextAttributes.ERROR_ATTRIBUTES)
-                        else -> Unit
-                    }
-                    if (u.treeChanged.isNotEmpty()) append("  ⚠ " + GgNotesBundle.message("toolwindow.treeChanged"), SimpleTextAttributes.ERROR_ATTRIBUTES)
-                    toolTipText = r.scope
-                }
-                is FileNode -> {
-                    append(u.file.path, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                    append("  (${u.file.threads.size})", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                }
-                is ThreadNode -> {
-                    val n = u.thread.root
-                    val range = if (n.first == n.last) "${n.first}" else "${n.first}–${n.last}"
-                    append("$range  ", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
-                    append(n.summary.ifBlank { "(no text)" }, if (u.thread.resolved) SimpleTextAttributes.GRAYED_ATTRIBUTES else SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                    append("  " + listOfNotNull(n.author.ifBlank { n.source }, (n.updated ?: n.created)?.let { date.format(it.toLocalDate()) }).joinToString(" · "), SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                    if (n.side == "old") append("  " + GgNotesBundle.message("toolwindow.old"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
-                    if (u.thread.resolved) append("  ✓ " + GgNotesBundle.message("toolwindow.resolved"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
-                    if (u.thread.forgeDraft) append("  " + GgNotesBundle.message("toolwindow.draft"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
-                    for (m in n.meta) append("  ${m.key}: ${m.value}", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
-                    toolTipText = n.rationale.ifBlank { null }
-                }
+                is TypeNode -> append(GgNotesBundle.message("toolwindow.kind.${u.kind.name}"), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                is DayNode -> append(u.day?.let { date.format(it) } ?: GgNotesBundle.message("toolwindow.noDate"), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                is ItemNode -> item(u, node)
                 is ReplyNode -> {
                     val r = u.reply
                     append("↳ ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
@@ -511,15 +534,82 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
             }
         }
 
-        /** Author and date only: the commit is the group header, and what else the row refers to is its badge. */
-        private fun tail(author: String, date: java.time.OffsetDateTime?): String {
-            val parts = ArrayList<String>()
-            if (author.isNotBlank()) parts += author
-            date?.let { parts += this.date.format(it.toLocalDate()) }
-            return parts.joinToString(" · ")
+        private fun item(u: ItemNode, node: DefaultMutableTreeNode) {
+            val item = u.item
+            icon = kindIcon(item.kind)
+            val resolved = (item.payload as? Payload.StoreThread)?.thread?.resolved == true
+            append(item.title.ifBlank { "(untitled)" }, if (resolved) SimpleTextAttributes.GRAYED_ATTRIBUTES else SimpleTextAttributes.REGULAR_ATTRIBUTES)
+            val tail = listOf(ItemViews.ownerLabel(item), item.author, whenText(item, node)).filter { it.isNotBlank() }
+            if (tail.isNotEmpty()) append("  " + tail.joinToString(" · "), SimpleTextAttributes.GRAYED_ATTRIBUTES)
+            val tip: String? = when (val p = item.payload) {
+                is Payload.StoreOverview -> {
+                    val o = p.overview
+                    badge(RowBadge.of(o, u.tips[o.branch]))
+                    if (p.replies.isNotEmpty()) append("  " + GgNotesBundle.message("toolwindow.replies", p.replies.size), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+                    if (o.document is DocumentResult.CannotRender) append("  " + GgNotesBundle.message("toolwindow.cannotRender"), SimpleTextAttributes.ERROR_ATTRIBUTES)
+                    OverviewGrouping.rowText(o)
+                }
+                is Payload.StoreReview -> {
+                    val r = p.review.record
+                    badge(RowBadge.ofReview(p.review, u.tips[r.address.branch]))
+                    val counts = p.review.counts()
+                    if (counts.isNotEmpty()) append("  " + Reviews.countsText(counts), SimpleTextAttributes.REGULAR_ITALIC_ATTRIBUTES)
+                    when (p.review.content) {
+                        is ReviewContent.Prose -> append("  prose", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+                        is ReviewContent.CannotRender -> append("  " + GgNotesBundle.message("toolwindow.cannotRender"), SimpleTextAttributes.ERROR_ATTRIBUTES)
+                        else -> Unit
+                    }
+                    if (u.treeChanged.isNotEmpty()) append("  ⚠ " + GgNotesBundle.message("toolwindow.treeChanged"), SimpleTextAttributes.ERROR_ATTRIBUTES)
+                    r.scope
+                }
+                is Payload.StoreThread -> {
+                    val t = p.thread
+                    val n = t.root
+                    if (n.side == "old") append("  " + GgNotesBundle.message("toolwindow.old"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+                    if (t.resolved) append("  ✓ " + GgNotesBundle.message("toolwindow.resolved"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+                    if (t.forgeDraft) append("  " + GgNotesBundle.message("toolwindow.draft"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+                    for (m in n.meta) append("  ${m.key}: ${m.value}", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+                    n.rationale.ifBlank { null }
+                }
+                is Payload.SessionOverview -> {
+                    // judged now, not at build time: Close or another row's click changes it without a rebuild
+                    if (service.open?.overview?.let { shows(u, it) } == true) append("  " + GgNotesBundle.message("toolwindow.shown"), SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+                    if (u.unresolved.isNotEmpty()) append("  ⚠ " + GgNotesBundle.message("toolwindow.unresolved", u.unresolved.size), SimpleTextAttributes.ERROR_ATTRIBUTES)
+                    u.session?.docs?.fileOf(dev.ggnotes.session.DocName(p.entry.doc.id, dev.ggnotes.session.DocKind.OVERVIEW))?.toString()
+                }
+                is Payload.SessionNote ->
+                    u.session?.docs?.fileOf(dev.ggnotes.session.DocName(p.entry.doc.id, dev.ggnotes.session.DocKind.NOTE))?.toString()
+            }
+            val commit = item.owner.commit
+            if (commit != null && u.subject == null) append("  " + GgNotesBundle.message("toolwindow.unknownCommit"), SimpleTextAttributes.ERROR_ATTRIBUTES)
+            val commitTip = commit?.let { u.subject ?: it }
+            toolTipText = when {
+                tip == null -> commitTip
+                commitTip == null -> tip
+                else -> "<html>" + escape(tip).replace("\n", "<br>") + "<br>" + escape(commitTip) + "</html>"
+            }
         }
 
-        /** The short grey badge after a title; nothing for a plain commit row. */
+        /**
+         * The item's time: only `HH:mm` when its day is the day row above it (the day is the parent),
+         * the date too for a contained item of another day, nothing for an undated item.
+         */
+        private fun whenText(item: NoteItem, node: DefaultMutableTreeNode): String {
+            val at = item.time?.atZone(ZoneId.systemDefault()) ?: return ""
+            val day = generateSequence(node.parent as? DefaultMutableTreeNode) { it.parent as? DefaultMutableTreeNode }
+                .mapNotNull { it.userObject as? DayNode }.firstOrNull()?.day
+            return if (day == at.toLocalDate()) time.format(at) else dateTime.format(at)
+        }
+
+        private fun kindIcon(kind: ItemKind): Icon = when (kind) {
+            ItemKind.BRANCH -> AllIcons.Vcs.Branch
+            ItemKind.COMMIT -> AllIcons.Vcs.CommitNode
+            ItemKind.PULL_REQUEST -> AllIcons.Vcs.Merge
+            ItemKind.FILE -> AllIcons.FileTypes.Text
+            ItemKind.OTHER -> AllIcons.Actions.Preview
+        }
+
+        /** The short grey badge after a row's grey tail; nothing for a plain commit row. */
         private fun badge(b: RowBadge?) {
             val text = when (b) {
                 null -> return
@@ -532,14 +622,6 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
                 RowBadge.Working -> GgNotesBundle.message("toolwindow.badge.working")
             }
             append("  $text", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
-        }
-
-        /** The pull request number when every record under the commit belongs to that one PR, else null. */
-        private fun prOf(entry: CommitEntry): Int? {
-            if (entry.files.isNotEmpty()) return null
-            val numbers = entry.overviews.map { it.prNumber } + entry.reviews.map { it.record.prNumber }
-            if (numbers.isEmpty() || numbers.any { it == null }) return null
-            return numbers.distinct().singleOrNull()
         }
     }
 }
