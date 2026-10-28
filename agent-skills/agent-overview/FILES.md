@@ -466,7 +466,7 @@ Use the live check and the command recipe of §6: the same `cid`, the same
    overview: `id`, `commit`). The reply is `opened review <id>` /
    `opened overview <id>`. A thread or a session note has no `navigate`
    route: say in one line where it is in the tool window. A thread is under
-   its review. A session note is in the Session group.
+   its review. A session note is a File row under its day.
 6. No fresh `ide.json`, or no reply: say in one line where the item is in
    the tool window. In By Date, it is under its day. In By Type, it is
    under its kind, then under its day.
