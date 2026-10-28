@@ -92,6 +92,8 @@ interface OverviewUi {
     fun showAnchor(n: Int)
     /** Show or hide the list above the document; hidden, the document takes the whole tool window. */
     fun showList(visible: Boolean)
+    /** Select the row of item [id] in [repo] without opening it again, and scroll it into view; false when no row has the id. */
+    fun revealItem(repo: GitRepository, id: String): Boolean = false
 }
 
 /**

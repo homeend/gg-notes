@@ -34,6 +34,7 @@ import dev.ggnotes.store.RemovalPlan
 import dev.ggnotes.store.ReviewContent
 import dev.ggnotes.store.Reviews
 import dev.ggnotes.store.RowBadge
+import dev.ggnotes.steer.ItemRows
 import dev.ggnotes.steer.SteerService
 import git4idea.repo.GitRepository
 import java.awt.BorderLayout
@@ -260,29 +261,29 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
     }
 
     /** Open [n]'s record as the row's click does. */
-    private fun open(n: ItemNode) {
-        when (val p = n.item.payload) {
-            is Payload.StoreOverview -> service.open(p.overview, n.repo)
-            is Payload.StoreReview -> service.openReview(p.review, n.repo)
-            is Payload.StoreThread -> service.openNotes(listOf(p.thread), p.thread.root.address.path, p.commit, p.worktree, n.repo)
-            is Payload.SessionOverview -> n.session?.let { steer.showOverview(it, p.entry, keepAnchor = false) }
-            is Payload.SessionNote -> n.session?.let { steer.showNote(it, p.entry) }
-        }
-    }
+    private fun open(n: ItemNode) = ItemOpener.open(project, n.item, n.repo, n.session)
 
-    /** Whether the open document [open] is [n]'s record (a session note opens an editor, never a document). */
+    /**
+     * Whether the open document [open] is [n]'s record (a session note opens an editor, never a document).
+     * A session overview's identity needs its steer session, so it is judged here; [ItemRows.isShown] the rest.
+     */
     private fun shows(n: ItemNode, open: Overview): Boolean = when (val p = n.item.payload) {
-        is Payload.StoreOverview -> p.overview.identity == open.identity
-        is Payload.StoreReview -> open.viewKind == "review:${p.review.id}:"
-        is Payload.StoreThread -> open.viewKind == "notes:${p.thread.root.id}:"
         is Payload.SessionOverview -> n.session?.let { steer.sessionIdentity(it, p.entry.doc) == open.identity } == true
-        is Payload.SessionNote -> false
+        else -> ItemRows.isShown(n.item, open)
     }
 
     /** Select the row of the open document without opening it again. */
     private fun selectShowing(open: OpenOverview) {
         val match = TreeUtil.findNode(root) { n -> (n.userObject as? ItemNode)?.let { it.repo == open.repo && shows(it, open.overview) } == true } ?: return
         selectSilently(match)
+    }
+
+    /** Select the row of item [id] in [repo] without opening it again, scrolled into view; false when no row has it. */
+    override fun revealItem(repo: GitRepository, id: String): Boolean {
+        val node = TreeUtil.findNode(root) { n -> (n.userObject as? ItemNode)?.let { it.repo == repo && it.item.id == id } == true } ?: return false
+        selectSilently(node)
+        tree.selectionPath?.let { tree.scrollPathToVisible(it) }
+        return true
     }
 
     /** Select [node] (null: clear the selection) without the selection listener opening anything. */
