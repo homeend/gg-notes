@@ -86,7 +86,7 @@ a gigagit task); PR comments; a search box; shelf notes.
   `gg overview save [<gg-link>] --agent <name> (--stdin|--file) [--title]`
   (a permanent overview on a commit), `gg note add <gg-link> --summary …`
   (a line note), `gg note list`, `gg note rm <id>`, `gg overview rm <id>`.
-  Links: `gg link <rev>` (`gg://<repo>/<rev>`), `--pr <n>`, `--pair`,
+  Links: `gg link --rev <rev>` / `--ref <branch>` / `--pr <n>` (a bare argument is read as a working-tree file), `--pair`,
   `--cached`. The store's cross-process lock and cascades stay gg's.
 - **Inside gg** = `GG_SESSION_ID` is set (gg sets it for every agent it
   starts and strips it from a child started outside:
@@ -111,7 +111,7 @@ recipes:
     of a commit/branch/PR; an overview of a commit) → the gg store through
     the CLI: `gg link …` for the target, `gg review save <link> --agent …
     --stdin` / `gg overview save <link> --agent … --file …`, line notes with
-    `gg note add <link>:<N>`. The document shapes are what `--dry-run
+    `gg note add --file <path> --new-line <N> --rev <sha> --summary …`. The document shapes are what `--dry-run
     --json` prints and the notes-store spec defines (the recipe follows
     gg's own `gg-review` / `gg-overview` store steps). The IDE lists it
     under its commit/branch/PR; the reply names the record id.
@@ -120,12 +120,13 @@ recipes:
 - **Deleting.** A session doc: delete its file. A store record:
   `gg note rm <id>` / `gg overview rm <id>` in the worktree (ids from
   `gg note list` / `gg overview list`, or the IDE's `files`, §4.3); no gg on
-  PATH → one line: use the tool window's **Remove from gg Store**. Never
+  PATH → one line: use the tool window's **Delete** (tree context menu). Never
   edit store files.
 - **Focusing something that already exists** (new `FILES.md` section): when
   the IDE is live, send `files`, pick the item by title / kind / date, send
-  `file_focus` with its id (§4.3). Before slice 4: session overviews only,
-  and store items by saying where they are in the tool window.
+  `file_focus` with its id (§4.3). Store items: the plugin's existing `navigate` command with
+  `hint_kind` / `hint_id` (`SteerHandler.openStored`) focuses a stored review
+  or overview now (FILES.md §9 "Focus it now", §11).
 
 The gg skills (`gg-review`, `gg-overview`, `reviewing-with-gg`, `using-gg`)
 are gigagit's and are not changed by this design.

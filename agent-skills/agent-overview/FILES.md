@@ -7,8 +7,8 @@ read-only remark box beside its lines in the editor. Nothing else is needed:
 no server, no command, no running process of yours. A file stays until the
 user deletes it in the IDE (tree context menu → Delete) or you remove it.
 
-The directory files need no tool. The store route (§9) needs the `gg` CLI on
-PATH, never a running gg. §0 tells you which route to take.
+The directory files need no tool. The store route (§9) needs a usable `gg`
+(§0), never a running gg. §0 tells you which route to take.
 
 ## 0. Inside gg or not
 
@@ -49,12 +49,13 @@ $GG = (Get-Command gg -ErrorAction SilentlyContinue).Source
 ```
 
 - `gg` is usable when `"$GG" overview list --json` exits 0 (PowerShell:
-  `& $GG overview list --json`). An old gg has no such verb and fails.
-  No binary found: `gg` is not usable.
+  `& $GG overview list --json`, then `$LASTEXITCODE -eq 0`). An old gg has
+  no such verb and fails. No binary found: `gg` is not usable. When gg is
+  not usable, say so in one line and take the files route (§1–§7).
 
 | the work | gg usable | route |
 |---|---|---|
-| a commit, a branch or a PR | yes | §9 |
+| a commit, a branch or a PR (a PR: a review only) | yes | §9 |
 | uncommitted work, or a walk through the working tree | any | §1–§7 files |
 | anything | no | §1–§7 files |
 
@@ -86,6 +87,8 @@ checked out in the worktree the IDE shows: HEAD, plus uncommitted changes.
 - `key(p)` = the absolute path with every `/`, `\` and `:` replaced by `-`
   (no trailing separator): `/work/app/.git` → `-work-app-.git`,
   `C:/src/app/.git` → `C--src-app-.git`.
+- Which side: the test of §0 (`$WSL_DISTRO_NAME` set and the worktree under
+  `/mnt/<letter>/`, or the user says the IDE runs on Windows) decides it.
 - Create the directory when it is missing. Put nothing in it except
   documents (and your own temp files, below).
 
@@ -287,58 +290,116 @@ examples below `$GG` is the binary from §0 (PowerShell: `& $GG …`).
 **With `gg.exe` from WSL:** run it with the worktree as the current
 directory (a `/mnt/<letter>/…` worktree: interop passes it as a Windows
 path), and give every file argument as a Windows path:
-`--file "$(wslpath -w overview.json)"`. Pipe stdin as usual.
+`--file "$(wslpath -w "$f")"`.
+
+What needs a checkout:
+
+- A **review** (commit, branch or PR) needs no checkout. gg reads the
+  commit.
+- An **overview** needs the commit on disk: gg checks every anchored file
+  against the working tree and refuses `<path>: differs from <sha7> on disk`.
+  A commit overview: the commit is HEAD with a clean tree. A **branch
+  overview**: use the tip link (`--ref <branch>`, stored on the tip); the tip
+  must be checked out the same way. A **PR**: write a review, or use the
+  session files (§1–§7).
+
+Steps:
 
 - **Target link.** A commit: `"$GG" link --rev <rev>` (`--rev HEAD`). A
-  PR: `"$GG" link --pr <n>`. A branch: `"$GG" link --ref <branch>`. Each
-  prints one `gg://…` link. Never give a bare `<rev>`: gg reads it as a file
-  of the working tree, and the link is then "working changes". Keep it as `$link`.
+  branch: `"$GG" link --ref <branch>`. A PR: first `"$GG" pr fetch <n>`
+  (it needs `gh` logged in), then `"$GG" link --pr <n>`. Each prints one
+  `gg://…` link; keep it as `$link`. Never give a bare `<rev>`: gg reads it
+  as a file of the working tree, and the link is then "working changes".
+  `$link` empty (a PR that cannot be fetched, a failed command): say so in
+  one line, take the session files when the work allows it, and stop. Do not
+  loop.
 - **Review.** First read what to review:
   `"$GG" review save "$link" --dry-run --json`. It prints `kind`, `label`,
   `checkout`, `diff` and `hunks`. Read the change with these values. The
   document shape and the meta and display block are in the file that
   `"$GG" skill path review` prints: read its "Review document" and "Meta
-  and display" sections. Do not guess them. Then store the review:
-  `"$GG" review save "$link" --agent "<your name>" --stdin --json`. On
-  `not a gg review document` or `unresolved: <dest>`, fix the document and
-  save again.
-- **Overview of a commit.** Write this JSON to a file:
+  and display" sections. Do not guess them. Write the document to a temp
+  file (below) and store it:
+  `"$GG" review save "$link" --agent "<your name>" --file "$f" --json`.
+  On `not a gg review document` or `unresolved: <dest>`, fix the document
+  and save again.
+- **Overview of a commit or a branch tip.** Write this JSON to a temp file:
   `{"version":1,"title":"…","overview":"<markdown, path:N-M anchors, no note:>","files":[{"path":"…","annotations":[{"newRange":[a,b],"summary":"…","rationale":"…"}]}]}`.
   The line numbers are the lines of the file AT the commit. Store it:
-  `"$GG" overview save "$link" --agent "<your name>" --file <json> --json`.
-- **Line notes on a commit.**
-  `"$GG" note add --file <path> --new-line <N> --rev <sha> --summary "…" [--rationale "…"]`.
+  `"$GG" overview save "$link" --agent "<your name>" --file "$f" --json`.
+- **Line notes on a commit.** Resolve the commit first, so `--rev` never
+  gets an empty value (an empty `--rev` stores a working-tree note):
+  `"$GG" note add --file <path> --new-line <N> --rev "$sha" --summary "…"
+  [--rationale "…"] --author "<your name>" --json`.
+- **The temp file.** Write the JSON in UTF-8 to a temp file OUTSIDE the
+  worktree, pass it with `--file`, delete it afterwards. Never pipe it
+  through stdin: Windows PowerShell 5.1 pipes stdin as ASCII and damages
+  "→" and "—".
 - **Refusals.** gg lists every problem and stores nothing. On
-  `<path>: uncommitted changes` or `<path>: differs from <sha7> on disk`,
-  the working tree is not the commit. Present the working tree with the
-  §1–§7 files instead, or ask the user. Do not loop.
-- **Result.** Read the record id in the `--json` output. The IDE shows the
-  record in the Agent Notes tool window, under its commit, branch or PR.
-  Your reply names the id and where it shows.
+  `<path>: uncommitted changes` or `<path>: differs from <sha7> on disk`:
+  - the commit is HEAD, and the tree has uncommitted edits: present the
+    working tree with the §1–§7 files, or ask the user;
+  - the commit is not checked out: ask the user to check it out (or to open
+    the IDE on a worktree at it). Do not check it out yourself.
+
+  Say it once. Do not loop.
+- **Result.** Read the record id in the `--json` output: `id` (a review
+  prints `id` and a `link` that ends in `?review=<id>`; an overview prints
+  `id` and `commit`). The IDE shows the record in the Agent Notes tool
+  window, under its commit, branch or PR. Your reply names the id and where
+  it shows.
+- **Focus it now** (optional). When the IDE is live (§6's rule), send:
+  `{"id":"<cid>","cmd":"navigate","commit":"<full sha>","hint_kind":"review","hint_id":"<record id>","wait":true}`
+  (`"hint_kind":"overview"` for an overview), written the way §6 writes
+  `file_focus`: a temp file in `$inbox/ide/`, then a rename to
+  `cmd-<cid>.json`. `commit` is the full sha you linked (the `commit` of an
+  overview's output; for a branch review the tip, `git rev-parse <branch>`).
+  The reply is `opened review <id>` / `opened overview <id>`. An id the store
+  no longer has opens the commit. No fresh `ide.json`, no reply in 2
+  seconds, or a PR review (no commit to name): say in one line where the
+  record shows, and go on. Never retry.
 - The store is permanent. Every worktree of the repo shares it. gg's expiry
   rules apply.
 
 sh:
 
 ```sh
-link=$("$GG" link --rev HEAD)
+link=$("$GG" link --rev HEAD)             # a PR: "$GG" pr fetch 7 && link=$("$GG" link --pr 7)
+[ -n "$link" ] || echo "no link: say so, stop" >&2
+sha=$(git rev-parse HEAD)
 "$GG" review save "$link" --dry-run --json
-"$GG" review save "$link" --agent "claude" --stdin --json < review.json
-"$GG" overview save "$link" --agent "claude" --file overview.json --json
-"$GG" note add --file src/app.go --new-line 42 --rev "$sha" --summary "…"
+f=$(mktemp)                               # outside the worktree
+# write the review JSON (UTF-8) to "$f"
+"$GG" review save "$link" --agent "claude" --file "$f" --json
+rm -f "$f"
+# an overview: the same, with: "$GG" overview save "$link" --agent "claude" --file "$f" --json
+"$GG" note add --file src/app.go --new-line 42 --rev "$sha" --summary "…" --author "claude" --json
 ```
 
 PowerShell:
 
 ```powershell
-$link = & $GG link --rev HEAD
+$link = $null
+$link = & $GG link --rev HEAD             # a PR: & $GG pr fetch 7; if ($LASTEXITCODE -eq 0) { $link = & $GG link --pr 7 }
+if (-not $link) { 'no link: say so, stop' }
+$sha = git rev-parse HEAD
 & $GG review save $link --dry-run --json
-Get-Content -Raw review.json | & $GG review save $link --agent 'claude' --stdin --json
-& $GG overview save $link --agent 'claude' --file overview.json --json
-& $GG note add --file src/app.go --new-line 42 --rev $sha --summary '…'
+$f = (New-TemporaryFile).FullName         # outside the worktree
+[IO.File]::WriteAllText($f, $json)        # $json = the review JSON; UTF-8, no BOM
+& $GG review save $link --agent 'claude' --file $f --json
+Remove-Item $f
+# an overview: the same, with: & $GG overview save $link --agent 'claude' --file $f --json
+& $GG note add --file src/app.go --new-line 42 --rev $sha --summary '…' --author 'claude' --json
 ```
 
-With `gg.exe` from WSL, write `--file "$(wslpath -w overview.json)"`.
+Focus (PowerShell; `$inbox` from §2, `$id` = the record id, `$full` = the full sha):
+
+```powershell
+$cid = "$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())-$PID"
+$cmd = '{"id":"' + $cid + '","cmd":"navigate","commit":"' + $full + '","hint_kind":"review","hint_id":"' + $id + '","wait":true}'
+[IO.File]::WriteAllText("$inbox\ide\.$cid.tmp", $cmd)
+Move-Item "$inbox\ide\.$cid.tmp" "$inbox\ide\cmd-$cid.json"
+```
 
 ## 10. Delete
 
@@ -352,10 +413,10 @@ Delete only what the user asked you to delete (§8.5 stays).
 - **A store record**: use the CLI, in the worktree. `"$GG" note rm <id>`
   removes a note, a thread with its replies, or a review. `"$GG" overview rm
   <id>` removes an overview. Find the ids with `"$GG" note list` and
-  `"$GG" overview list --json`. PowerShell: `& $GG note rm <id>`,
-  `& $GG overview rm <id>`.
+  `"$GG" overview list --all --json` (without `--all` it lists only HEAD's
+  overviews). PowerShell: `& $GG note rm <id>`, `& $GG overview rm <id>`.
 - **No usable gg**: say in one line that the user deletes the record in the
-  tool window (**Remove from gg Store**). Never edit or delete store files.
+  tool window (tree context menu → Delete). Never edit or delete store files.
 
 ## 11. Bring an existing document to the front
 
@@ -367,6 +428,9 @@ Use the live check and the command recipe of §6: the same `cid`, the same
    are the session overviews. Each has `id`, `title` and `created`. Pick
    the row by its title or its date.
 2. Send `file_focus` with that id (§6).
-3. A store review or overview is not in the `files` reply. Say in one line
-   where it is in the tool window (under its commit, branch or PR). A later
-   plugin version will focus it.
+3. A store review or overview is not in the `files` reply. Take its id and
+   commit from `"$GG" note list --json` (a review: `id`, `rev`) or
+   `"$GG" overview list --all --json` (an overview: `id`, `commit`), and send the `navigate` command of
+   §9 "Focus it now". Reply `opened review <id>` / `opened overview <id>`.
+   No fresh `ide.json` or no reply: say in one line where it is in the tool
+   window (under its commit, branch or PR).

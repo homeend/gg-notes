@@ -77,9 +77,10 @@ commands and identifiers stay exactly as they are.
    `summary` is the finding in one sentence; `rationale` says why it
    matters and how it fails.
 4. **The review** — on the store route it is the same gg review document as
-   the remarks (FILES.md §9): no note files, no overview file. On the files
-   route: one overview file (FILES.md §5), `title = "Review:
-   <what was reviewed>"`. The body, exactly:
+   the remarks (FILES.md §9): no note files, no overview file; its `summary`
+   keeps the sections below and the contracts rule. On the files route: one
+   overview file (FILES.md §5), `title = "Review: <what was reviewed>"`.
+   The body, exactly:
    - `## Summary` — 1–3 sentences: **before → after** (what the code did,
      what it does now). When there are mechanical files, end with one line
      `Mechanical: <files>`.
@@ -103,8 +104,9 @@ commands and identifiers stay exactly as they are.
    that `"$GG" skill path review` prints describes. The review stays the judgement; the walkthrough only
    explains. Otherwise write no walkthrough.
 6. **Check** (FILES.md §7), then **show it** (FILES.md §6, optional).
-   On the store route, check with `review save --dry-run` and the refusals
-   in FILES.md §9.
+   On the store route, §7 and §6 do not apply: the check is the save's
+   `unresolved:` and refusal output (FILES.md §9); show it with FILES.md §9
+   "Focus it now".
 7. **Reply** with the verdict first, the review's title and id, the
    directory, and a three-line summary. On the store route, give the record
    id and where it shows in the tool window (FILES.md §9) in place of the

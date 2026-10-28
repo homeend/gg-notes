@@ -57,8 +57,9 @@ work), collect these facts first, with git, in the worktree:
 
 On the files route the worktree must hold the version you present
 (FILES.md §1). If the user names a commit that is not checked out and gg is
-not usable, ask them to check it out first. With usable gg (§0), a commit
-needs no checkout.
+not usable, ask them to check it out first. With usable gg (§0), a
+REVIEW of a commit needs no checkout; an OVERVIEW needs the commit on disk
+(FILES.md §9): when it is not, ask the user to check it out.
 
 ## What the overview says — a walkthrough, never a file list
 
@@ -113,12 +114,13 @@ link make it plain text (FILES.md §5). ≤ 64 KiB, ≤ 100 anchors.
 
 ## Steps
 
-0. **Route** (FILES.md §0). An overview of a commit, with usable gg:
-   store it with FILES.md §9 `overview save`. The anchors are lines at the
-   commit. Steps 2–4 are then FILES.md §9. Step 5: check each anchor against the
+0. **Route** (FILES.md §0). An overview of a commit, with usable gg and
+   the commit on disk: store it with FILES.md §9 `overview save`. A branch
+   overview uses the tip link (`--ref <branch>`); the tip must be on disk
+   too. The anchors are lines at the commit. Steps 2–4 are then FILES.md §9. Step 5: check each anchor against the
    file AT the commit (gg's `unresolved:` and refusal output is the check).
-   Step 6 does not apply: say where the record shows (FILES.md §9
-   "Result"). Step 7: reply with the record id and where it shows, not the
+   Step 6: focus it with FILES.md §9 "Result" / §11 (`navigate`), not §6.
+   Step 7: reply with the record id and where it shows, not the
    directory. A walk through uncommitted work or the working tree: steps
    1–7 below, as written.
 1. **Finish first.** Make every edit before you write a single note.

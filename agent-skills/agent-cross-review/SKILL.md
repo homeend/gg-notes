@@ -52,7 +52,9 @@ reviewer the same rule.
    > <range>`), the old code of changed functions (`git show
    > <base>:<path>`) and the callers of every changed name. <Focus: look
    > hardest at … and list it first.> Do not modify any file. Write in
-   > ASD-STE100. Your final message is ONLY this JSON, no prose:
+   > ASD-STE100. (Store route, FILES.md §9: give "start" and "end" as lines of
+   > `git show <rev>:<path>`, the file at the reviewed commit, not the file as
+   > it is now.) Your final message is ONLY this JSON, no prose:
    > `{"summary": "<before → after, 1–3 sentences>", "verdict": "approve |
    > comment | request changes", "findings": [{"path": "<worktree-relative
    > path>", "start": <first line in the file as it is now>, "end": <last
@@ -66,13 +68,19 @@ reviewer the same rule.
    not return the JSON is a failed reviewer: keep its error for the
    summary. None succeeded → report the errors and stop.
 5. **Merge** — see **Merging** below.
-6. **Write the files** (FILES.md): one note per kept remark, then one
-   overview, `title = "Cross-review: <what was reviewed>"`, `author =
-   "<you> — cross-review (<model1>, <model2>[, <model3>])"`. A walkthrough
-   only when the user asked for one (agent-review step 5), written by YOU.
+6. **Write the review.** Files route (FILES.md §1–§7): one note per kept
+   remark, then one overview, `title = "Cross-review: <what was reviewed>"`,
+   `author = "<you> — cross-review (<model1>, <model2>[, <model3>])"`. Store
+   route (FILES.md §9): write ONE gg review document, saved with `--agent
+   "<you> — cross-review (<model1>, <model2>[, <model3>])"`. Each kept remark
+   is a `files[].annotations` entry with `meta` (`raised_by`, `ruling`, and
+   the other keys of **Merging**); the sections `## Disagreements resolved`
+   and `## Reviewers` go into `summary`. A walkthrough only when the user
+   asked for one (agent-review step 5), written by YOU.
 7. **Check** (FILES.md §7), then **show it** (FILES.md §6, optional). On the
-   store route, the check is gg's output (`--dry-run`, refusals; FILES.md
-   §9) and there is no §6 step: say where the record shows.
+   store route, §7 and §6 do not apply: the check is gg's output
+   (`unresolved:` and refusals; FILES.md §9); show it with FILES.md §9
+   "Focus it now".
 8. **Reply** with the verdict first, each reviewer and its verdict, how
    many findings were agreed, how many disputed and how you ruled, the
    review's id and the directory (store route: the record id and where it
@@ -115,6 +123,9 @@ lines apart in the same function) and they describe the same problem.
   depend on, and what happens to old data and old callers. A breaking
   change without a migration is a finding; when no reviewer raised it,
   `raised_by` = your own name.
+
+On the store route the notes are `files[].annotations` of the one review
+document, and the overview's body below is its `summary`.
 
 Every note's meta also carries `kind`, `severity`, `intent` and
 `confidence` (agent-review step 3).
