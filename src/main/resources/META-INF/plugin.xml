@@ -23,6 +23,12 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>0.6.2</h3>
+        <ul>
+            <li><b>Copy Link</b> (and Ctrl+C) now works on stored reviews, overviews and notes too: the line names
+                the record, its commit and the <code>gg</code> command that prints it, so you can paste a review
+                to an agent to address it.</li>
+        </ul>
         <h3>0.6.1</h3>
         <ul>
             <li>A click on a link in a long overview no longer moves the overview back to its top:

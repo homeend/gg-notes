@@ -141,8 +141,10 @@ link make it plain text (FILES.md §5). ≤ 64 KiB, ≤ 100 anchors.
    in the IDE.
 
 When the user later pastes a link copied in the IDE (`Agent Notes overview
-…` or `Agent Notes note …`), follow FILES.md §8: read the file it names —
-that is the document or the step they ask about — and work in its worktree.
+…`, `Agent Notes note …`, `Agent Notes review …` or `Agent Notes stored
+…`), follow FILES.md §8: read what it names (the file, or the output of its
+`read:` command) — that is the document or the step they ask about — and
+work in its worktree.
 
 **Delete.** Only when the user asks: FILES.md §10.
 **Show an existing one.** FILES.md §11.

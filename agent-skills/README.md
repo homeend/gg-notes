@@ -18,10 +18,12 @@ into gg's store
 
 ## Pasting a document back to an agent
 
-In the IDE, **Copy Link** on a session overview row or a session note row
-(or Ctrl+C) and **Copy Session Note Link** on a note box copy one line that names the document, its
-worktree and its file. Paste it to an agent with what you want ("fix
-this"); the skills read the file it names (`agent-overview/FILES.md` §8).
+In the IDE, **Copy Link** on any row of the Agent Notes tool window (or
+Ctrl+C) and **Copy Session Note Link** on a note box copy one line that
+names the document and its worktree, plus its file (a session document) or
+the `gg` command that prints it (a review, overview or note in the gg
+store). Paste it to an agent with what you want ("fix this"); the skills
+read it (`agent-overview/FILES.md` §8).
 
 ## Install
 

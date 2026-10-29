@@ -298,14 +298,14 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
 
     private val selectedNode: DefaultMutableTreeNode? get() = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
 
-    /** The selected row's link (a session overview or note item only), or null. */
+    /** The selected item's link: a session document's file, or a stored record and the gg command that prints it; null for other rows. */
     private fun linkOfSelected(): String? {
         val n = selectedNode?.userObject as? ItemNode ?: return null
-        val s = n.session ?: return null
         return when (val p = n.item.payload) {
-            is Payload.SessionOverview -> steer.overviewLink(s, p.entry.doc)
-            is Payload.SessionNote -> steer.noteLink(s, p.entry.doc)
-            else -> null
+            is Payload.SessionOverview -> n.session?.let { steer.overviewLink(it, p.entry.doc) }
+            is Payload.SessionNote -> n.session?.let { steer.noteLink(it, p.entry.doc) }
+            is Payload.StoreOverview, is Payload.StoreReview, is Payload.StoreThread ->
+                dev.ggnotes.items.StoreRefs.link(n.item, java.nio.file.Path.of(n.repo.root.path).toString())
         }
     }
 
@@ -316,7 +316,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         return link
     }
 
-    /** "Copy Link" on a session row: one line naming the document, its worktree and its file, for an agent to read. */
+    /** "Copy Link" on an item row: one line naming the document and how to read it, for the user to paste to an agent. */
     private inner class CopyLinkAction : AnAction(
         GgNotesBundle.message("action.GgNotes.CopyLink.text"),
         GgNotesBundle.message("action.GgNotes.CopyLink.description"),
@@ -325,9 +325,7 @@ class OverviewToolWindowPanel(private val project: Project) : SimpleToolWindowPa
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
         override fun update(e: AnActionEvent) {
-            val n = selectedNode?.userObject as? ItemNode
-            e.presentation.isEnabledAndVisible = n?.session != null &&
-                (n.item.payload is Payload.SessionOverview || n.item.payload is Payload.SessionNote)
+            e.presentation.isEnabledAndVisible = linkOfSelected() != null
         }
 
         override fun actionPerformed(e: AnActionEvent) {
