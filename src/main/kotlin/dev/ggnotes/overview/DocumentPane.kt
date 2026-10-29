@@ -20,6 +20,7 @@ import java.awt.Rectangle
 import java.time.format.DateTimeFormatter
 import javax.swing.JEditorPane
 import javax.swing.JPanel
+import javax.swing.text.DefaultCaret
 import javax.swing.text.html.HTML
 import javax.swing.text.html.HTMLDocument
 import javax.swing.event.HyperlinkEvent
@@ -35,10 +36,26 @@ class DocumentPane(private val project: Project, private val service: OverviewSe
     private val pane = JEditorPane()
     private val scroll = ScrollPaneFactory.createScrollPane(pane)
     private var shown: OpenOverview? = null
+    /** Set by show(): the caret does not scroll until the user presses a key or a mouse button in the pane. */
+    private var quietCaret = false
 
     init {
         header.border = JBUI.Borders.empty(6, 8, 4, 8)
         pane.isEditable = false
+        // after new text the caret must not scroll: Swing scrolls to it later (from its own queue), racing
+        // show()'s restore, and an anchor click put the overview back at its top. The user's next key or
+        // mouse press makes the caret follow again (arrow keys, drag-select).
+        pane.caret = object : DefaultCaret() {
+            override fun adjustVisibility(nloc: Rectangle?) {
+                if (!quietCaret) super.adjustVisibility(nloc)
+            }
+        }
+        pane.addKeyListener(object : java.awt.event.KeyAdapter() {
+            override fun keyPressed(e: java.awt.event.KeyEvent) { quietCaret = false }
+        })
+        pane.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mousePressed(e: java.awt.event.MouseEvent) { quietCaret = false }
+        })
         pane.editorKit = HTMLEditorKitBuilder().withWordWrapViewFactory().build()
         pane.border = JBUI.Borders.empty(4, 8)
         pane.background = UIUtil.getPanelBackground()
@@ -57,10 +74,13 @@ class DocumentPane(private val project: Project, private val service: OverviewSe
     }
 
     fun show(open: OpenOverview?) {
+        // the same document shown again (an anchor click re-renders it) stays where the user scrolled it; another starts at its top
+        val same = open != null && shown?.overview?.identity == open.overview.identity && shown?.repo == open.repo
         shown = open
         if (open == null) {
             header.text = GgNotesBundle.message("document.none")
             // an empty string leaves the HTML kit's previous body structure behind (a stray bullet); a bare body does not
+            quietCaret = true
             pane.text = "<html><body></body></html>"
             pane.caretPosition = 0
             return
@@ -75,10 +95,13 @@ class DocumentPane(private val project: Project, private val service: OverviewSe
             is DocumentResult.CannotRender -> "<body><p class='missing'>" + esc(GgNotesBundle.message("document.cannotRender", d.reason)) + "</p></body>"
             is DocumentResult.Ok -> open.rendered.html
         }
-        val keep = scroll.verticalScrollBar.value
+        val keep = if (same) scroll.verticalScrollBar.value else 0
+        quietCaret = true
         pane.text = "<html><head><style>${css()}</style></head>$body</html>"
         pane.caretPosition = 0
-        ApplicationManager.getApplication().invokeLater({ scroll.verticalScrollBar.value = keep }, project.disposed)
+        scroll.verticalScrollBar.value = keep
+        // again once the new text is laid out: until then the scroll range may be too short to hold it
+        ApplicationManager.getApplication().invokeLater({ if (shown === open) scroll.verticalScrollBar.value = keep }, project.disposed)
     }
 
     /**
