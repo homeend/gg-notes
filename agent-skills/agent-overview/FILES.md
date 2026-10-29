@@ -251,16 +251,28 @@ under today's date, and go on. Never wait longer, never retry.
 
 ## 8. A link the user pastes
 
-In the IDE, **Copy Link** on a session overview row or a session note row
-of the Agent Notes tool window (or Ctrl+C on the row) and **Copy Session Note Link** on a note box (editor context
-menu, caret on the note) copy ONE line:
+In the IDE, **Copy Link** on a row of the Agent Notes tool window (or
+Ctrl+C on the row) and **Copy Session Note Link** on a note box (editor
+context menu, caret on the note) copy ONE line. A session document names
+its file:
 
 ```
 Agent Notes overview <id> "<title>" (worktree <path>; file <path>)
 Agent Notes note <id> at <path>:<N>[-<M>][ (outdated)] "<summary>" (worktree <path>; file <path>)
 ```
 
-When the user's message holds such a line:
+A record in the gg store names the `gg` command that prints it:
+
+```
+Agent Notes review <id> "<title>" (worktree <path>; commit <sha7>|working tree; read: gg note show <id> --json)
+Agent Notes stored overview <id> "<title>" (worktree <path>; commit <sha7>|working tree; read: gg overview show <id> --json)
+Agent Notes stored note <id> at <path>:<N>[-<M>] "<summary>" (worktree <path>; commit <sha7>|working tree; read: gg note show <id> --json)
+```
+
+A line with `read:` is a store record. Read it with the steps under
+"A store record" below. A line with `file` is a session document:
+
+When the user's message holds a session document line:
 
 1. **Read the file** after `file`. It is the document: a note (§4) or an
    overview (§5). An overview's `note:<id>` anchor is `<id>.toml` in the
@@ -283,6 +295,47 @@ When the user's message holds such a line:
    on it. When your fix makes a note obsolete, say so in the reply (the
    user deletes it: tree or editor menu → Delete); delete it yourself only
    when the user asks.
+
+**A store record** (the line has `read:`):
+
+1. **Find `gg`** with §0 (`$GG`: `gg`, or `gg.exe` when the IDE runs on
+   Windows). No gg instance is necessary.
+2. **Run the `read:` command in the worktree** after `worktree` (from WSL:
+   `cd "$(wslpath -u '<path>')"`). Use `$GG` in place of `gg`:
+
+   ```sh
+   "$GG" note show <id> --json
+   ```
+
+   ```powershell
+   & $GG note show <id> --json
+   ```
+
+   gg is not usable: say so in one line and ask the user to paste the
+   review text. Do not guess the content.
+3. **A review:** the output's `note.Rationale` is the review document
+   (JSON). Its `summary` holds the findings and the verdict. Each
+   `files[].annotations[]` entry is one remark: `path`, `newRange` (the
+   lines in the file at the reviewed commit) or `oldRange` (removed
+   lines), `summary`, `rationale`, `meta`. `note.Address.Commit` is the
+   reviewed commit; empty means the working tree. A prose review has a
+   `Rationale` that is not JSON: read it as text.
+4. **A stored overview:** `"$GG" overview show <id> --json` prints
+   `title`, `commit`, `document.overview` (the markdown body) and
+   `anchors` (each one: `path`, `start`, `end`).
+5. **A stored note:** the output's `note` has `Summary`, `Rationale`,
+   `Address.Path` and `Range` (the lines at `Address.Commit`), and the
+   `replies`.
+6. **The lines are at the commit.** When the worktree's HEAD is not that
+   commit, the code can have moved. Find the same code in the file as it
+   is now (`git show <commit>:<path>` gives the old file) before you
+   change it.
+7. **Do what the user asks**: fix what the remarks name, answer about a
+   finding. A message with ONLY the line: say in three lines what the
+   record says and what you would do next, then wait.
+8. **The record stays.** Do not delete it because you acted on it. When
+   your fix resolves a remark, say so in the reply. Delete it only when
+   the user asks (§10).
 
 ## 9. Commit, branch or PR work: store it in gg
 

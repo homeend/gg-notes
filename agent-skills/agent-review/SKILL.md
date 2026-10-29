@@ -118,9 +118,11 @@ safe?") is not a review: answer it, and write one note (FILES.md §4) if a
 note helps.
 
 When the user pastes a link copied in the IDE (`Agent Notes note …` from a
-remark, `Agent Notes overview …` from a review), follow
-`../agent-overview/FILES.md` §8: read the file it names and act on that
-remark or review — for example fix what the remark names.
+remark, `Agent Notes overview …` from a review, `Agent Notes review …` or
+`Agent Notes stored …` from a record in the gg store), follow
+`../agent-overview/FILES.md` §8: read what it names (the file, or the
+output of its `read:` command) and act on that remark or review — for
+example fix what the remark names.
 
 **Delete.** Only when the user asks: FILES.md §10.
 **Show an existing one.** FILES.md §11.

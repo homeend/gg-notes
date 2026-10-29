@@ -1001,7 +1001,8 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
     /**
      * "Copy Link" makes a session overview row and a session note addressable: the clipboard gets
      * one line naming the document, its worktree and its file, which an agent pastes and reads.
-     * Ctrl+C on the tree does the same; a stored row offers no link.
+     * Ctrl+C on the tree does the same. A stored row's line names the record and the gg command
+     * that prints it, so the user can hand a stored review to an agent too.
      */
     fun testCopyLinkOfASessionRowAndOfASessionNote() {
         val steer = dev.ggnotes.steer.SteerService.getInstance(project)
@@ -1031,14 +1032,25 @@ class OverviewFlowIntegrationTest : HeavyPlatformTestCase() {
             assertEquals("one action answers Ctrl+C", 1, copyKey.size)
             assertEquals("Copy Link", copyKey.single().templatePresentation.text)
 
-            // a stored overview row has no link
+            // a stored overview row: the record, its commit and the gg command that prints it
             val snapshot = ApplicationManager.getApplication().executeOnPooledThread<Snapshot> { service.refreshSync() }.get()
             PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
             val repo = GitRepositoryManager.getInstance(project).getRepositoryForRootQuick(root)!!
-            service.open(snapshot.repos.single().model.commits.single { it.commit == sha }.overviews.single { it.id == "7cf0812f" }, repo)
+            val stored = snapshot.repos.single().model.commits.single { it.commit == sha }.overviews.single { it.id == "7cf0812f" }
+            service.open(stored, repo)
             PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
             assertNotNull(panel.selectedRow)
-            assertNull(panel.copyLinkOfSelected())
+            assertEquals(
+                "Agent Notes stored overview 7cf0812f ${dev.ggnotes.session.SessionDocRefs.quote(stored.title)} " +
+                    "(worktree ${java.nio.file.Path.of(repo.root.path)}; commit ${sha.take(7)}; read: gg overview show 7cf0812f --json)",
+                panel.copyLinkOfSelected(),
+            )
+            // and a stored review row
+            val review = snapshot.repos.single().model.commits.single { it.commit == sha }.reviews.first()
+            service.openReview(review, repo)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            val reviewLink = panel.copyLinkOfSelected()
+            assertTrue(reviewLink, reviewLink!!.startsWith("Agent Notes review ${review.id} ") && reviewLink.endsWith("read: gg note show ${review.id} --json)"))
         } finally {
             service.close()
             com.intellij.openapi.util.Disposer.dispose(panel)
